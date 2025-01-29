@@ -1,12 +1,16 @@
 # JSON2Go
 
- Generates Golang code from a given JSON-Document. The code is returned as an Ast-Tree. Whilst most other
- converters make the assumption, that the first seen element of a type, represents the type. 
- This converter does it differently. It combines types with the same name at the same
- level into one type that contains all unique fields.
- This is useful, if a JSON-Array which omits empty elements should be converted
- into a Golang struct. In case a simple field occurs more than once inside to equally named and leveled structures,
- the last one seen is used
+Json2Go can generate Golang structs from a single or set of JSON-File/s. It comes with features that make it especially useful when working with undocumented JSON responses.
+
+## Feature List:
+ - While other generators assume that the first element of an array represents the type, this one uses all observed elements.
+ - Decide which type is appropriate via built-in type-determiners (time.Time and UUID) or custom ones.
+ - Determines the final field type by looking at all values seen for a field. For example, if a response for a field contains ["1", "2", "2z"], the final type would be string, not int.
+ - Generates a custom unmarshal function for each type. Which uses the functions provided by the type-determiners" to unmarshal special types.
+ - The custom unmarshal function returns an error, which does not interrupt the unmarshalling process, upon encountering an unknown field.
+ - Use multiple JSON-Files to Determine the type. This could be used to adjust the resulting structure upon newly received data.
+
+
 
 
 For Example this JSON 
