@@ -10,7 +10,6 @@ import (
 	"go/ast"
 	"go/token"
 	"io"
-	"strings"
 )
 
 type ParseFunctions struct {
@@ -128,7 +127,7 @@ func GetJson2GoTag(tag string) (*Tag, error) {
 func GetJson2GoTagFromBasicLit(tag *ast.BasicLit) (*Tag, error) {
 	var err error
 	var json2GoTag *Tag
-	keys := ExtractTagsByKey(tag)
+	keys := AstUtils.ExtractTagsByKey(tag)
 
 	if v, ok := keys["json2go"]; !ok {
 		return nil, errors.New("basic literal not found in tag")
@@ -169,30 +168,4 @@ func combineTags(tag1, tag2 *ast.BasicLit) (*ast.BasicLit, error) {
 	combiners := make(map[string]AstUtils.TagCombiner)
 	combiners["json2go"] = &Json2GoTagCombiner{}
 	return AstUtils.CombineTags(tag1, tag2, combiners)
-}
-
-func ExtractTagsByKey(tag *ast.BasicLit, valueMap ...map[string][]string) map[string][]string {
-	var found map[string][]string
-	if valueMap == nil || len(valueMap) == 0 || valueMap[0] == nil {
-		found = make(map[string][]string)
-	} else {
-		found = valueMap[0]
-	}
-	if tag == nil {
-		return found
-	}
-	tags := strings.Split(strings.ReplaceAll(tag.Value, "`", ""), " ")
-
-	for _, s := range tags {
-		v := strings.SplitN(strings.ReplaceAll(s, "\"", ""), ":", 2)
-		if len(v) == 1 {
-			continue
-		}
-		if _, ok := found[v[0]]; !ok {
-			found[v[0]] = []string{v[1]}
-		} else {
-			found[v[0]] = append(found[v[0]], v[1])
-		}
-	}
-	return found
 }
