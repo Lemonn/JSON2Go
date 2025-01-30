@@ -94,7 +94,7 @@ func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 }
 
 func (t *TimeTypeChecker) GetRequiredImports() []string {
-	return []string{"github.com/araddon/dateparse", "time"}
+	return []string{"time"}
 }
 
 type UUIDTypeChecker struct{}

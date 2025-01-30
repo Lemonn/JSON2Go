@@ -17,8 +17,8 @@ type ParseFunctions struct {
 	ToTypeParseFunction   string `json:"toTypeParseFunction,omitempty"`
 }
 type Tag struct {
-	SeenValues              []string        `json:"seenValues"`
-	CheckedNonMatchingTypes []string        `json:"checkedNonMatchingTypes"`
+	SeenValues              []string        `json:"seenValues,omitempty"`
+	CheckedNonMatchingTypes []string        `json:"checkedNonMatchingTypes,omitempty"`
 	ParseFunctions          *ParseFunctions `json:"parseFunctions,omitempty"`
 	BaseType                *string         `json:"baseType,omitempty"`
 }
@@ -108,6 +108,25 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 	} else {
 		jNew.BaseType = nil
 	}
+
+	NonMatchingTypes := make(map[string]struct{})
+	if j.CheckedNonMatchingTypes != nil {
+		for _, nonMatchingType := range j.CheckedNonMatchingTypes {
+			NonMatchingTypes[nonMatchingType] = struct{}{}
+		}
+	}
+	if j1.CheckedNonMatchingTypes != nil {
+		for _, nonMatchingType := range j1.CheckedNonMatchingTypes {
+			NonMatchingTypes[nonMatchingType] = struct{}{}
+		}
+	}
+
+	if NonMatchingTypes == nil {
+		jNew.CheckedNonMatchingTypes = []string{}
+	}
+	for s, _ := range NonMatchingTypes {
+		jNew.CheckedNonMatchingTypes = append(jNew.CheckedNonMatchingTypes, s)
+	}
 	return &jNew, nil
 }
 
@@ -131,7 +150,7 @@ func GetJson2GoTagFromBasicLit(tag *ast.BasicLit) (*Tag, error) {
 	keys := AstUtils.ExtractTagsByKey(tag)
 
 	if v, ok := keys["json2go"]; !ok {
-		return nil, errors.New("basic literal not found in tag")
+		return nil, nil
 	} else {
 		json2GoTag, err = GetJson2GoTag(v[0])
 		if err != nil {
@@ -141,9 +160,9 @@ func GetJson2GoTagFromBasicLit(tag *ast.BasicLit) (*Tag, error) {
 	return json2GoTag, nil
 }
 
-type Json2GoTagCombiner struct{}
+type TagCombiner struct{}
 
-func (j *Json2GoTagCombiner) Combine(values []string) (string, error) {
+func (j *TagCombiner) Combine(values []string) (string, error) {
 	if len(values) == 0 {
 		return "", nil
 	} else if len(values) == 1 {
@@ -167,6 +186,6 @@ func (j *Json2GoTagCombiner) Combine(values []string) (string, error) {
 
 func combineTags(tag1, tag2 *ast.BasicLit) (*ast.BasicLit, error) {
 	combiners := make(map[string]AstUtils.TagCombiner)
-	combiners["json2go"] = &Json2GoTagCombiner{}
+	combiners["json2go"] = &TagCombiner{}
 	return AstUtils.CombineTags(tag1, tag2, combiners)
 }
