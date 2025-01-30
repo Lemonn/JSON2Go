@@ -60,6 +60,29 @@ Array []struct {
 }
 ```
 
+## Tag Documentation
+
+Uses the _**json2go**_ tag, to store relevant data. This includes all previously seen values for a field. Its original
+type, should the type have been adjusted, and references to the to and from type functions.
+The data is organized in a structure.
+
+```golang
+type Tag struct {
+	SeenValues              []string        `json:"seenValues"`
+	CheckedNonMatchingTypes []string        `json:"checkedNonMatchingTypes"`
+	ParseFunctions          *ParseFunctions `json:"parseFunctions,omitempty"`
+	BaseType                *string         `json:"baseType,omitempty"`
+}
+```
+To store the struct as a tag, it's JSON marshalled and base64 encoded.
+
+The data is used by Json2Go in different steps. It's also used to combine multiple generated structures into one.
+Therefore, the data needs to be kept, as long as the type determination is not final. 
+After the generation has been finalized, the data could be removed. Sometimes it's required to combine
+a lot of data, to determine the struct type. Or even do it in production on live data. 
+To prevent the tag from exploding. It also stores a set of strings, that contain all non-matching types.
+The Typeadjuster could be set, to ignore the given adjusters.
+
 ## Type Adjustment
 
 **Important, it's required to unnest your generated structs first, before using the type adjustment!**
@@ -100,6 +123,10 @@ set of values.
 **_GetType_** Returns the type as a string, for example, time.Time for the time type.
 
 _**GenerateFromTypeFunction**_ and _**GenerateToTypeFunction**_ receive a function with its name and header and 
-return values set. The function only needs to generate the function body.
+return values set. The function only needs to generate the function body. To generate the ast-code it's 
+advised to write the code first into a dummy function and use this amazing tool https://astextract.lu4p.xyz/ 
+to convert it to ast-code.
 
-The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here:
+The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here: 
+[typeDeterminers.go](https://github.com/Lemonn/JSON2Go/blob/ce85a6cc8abf255c8c8733ddbcb10d3dc40fa7a1/typeDeterminers.go#L15)
+
