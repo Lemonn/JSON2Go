@@ -306,7 +306,7 @@ func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
 		return false
 	}, &completed1)
 
-	for _, node := range foundNodes {
+	for _, node := range foundNodes1 {
 		typeSpec := (*node.Parents[0]).(*ast.TypeSpec)
 		if _, ok := foundStructs[typeSpec.Name.Name]; !ok {
 			foundStructs[typeSpec.Name.Name] = []*ast.StructType{typeSpec.Type.(*ast.StructType)}

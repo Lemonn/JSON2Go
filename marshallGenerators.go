@@ -23,7 +23,7 @@ func GenerateJsonMarshall(file *ast.File) error {
 		required := false
 		for _, field := range (*node.Node).(*ast.StructType).Fields.List {
 			lit, err := GetJson2GoTagFromBasicLit(field.Tag)
-			if err == nil && lit.ParseFunctions != nil && lit.BaseType != nil {
+			if err == nil && lit != nil && lit.ParseFunctions != nil && lit.BaseType != nil {
 				required = true
 				structFields = append(structFields, &ast.Field{
 					Names: []*ast.Ident{
@@ -250,7 +250,7 @@ func GenerateJsonUnmarshall(file *ast.File) error {
 		var stmts []ast.Stmt
 		for _, field := range (*node.Node).(*ast.StructType).Fields.List {
 			lit, err := GetJson2GoTagFromBasicLit(field.Tag)
-			if err == nil && lit.ParseFunctions != nil {
+			if err == nil && lit != nil && lit.ParseFunctions != nil {
 				jsonName, err := AstUtils.GetJsonTagName(field.Tag)
 				if err != nil {
 					continue
