@@ -32,11 +32,6 @@ func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
 }
 
 func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
-	for i, result := range functionScaffold.Type.Results.List {
-		if result.Type.(*ast.Ident).Name == "TODO" {
-			functionScaffold.Type.Results.List[i].Type.(*ast.Ident).Name = "time.Time"
-		}
-	}
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -67,11 +62,6 @@ func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDec
 }
 
 func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
-	for i, param := range functionScaffold.Type.Params.List {
-		if param.Type.(*ast.Ident).Name == "TODO" {
-			functionScaffold.Type.Params.List[i].Type.(*ast.Ident).Name = "time.Time"
-		}
-	}
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{

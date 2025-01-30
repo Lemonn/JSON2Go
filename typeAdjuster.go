@@ -46,6 +46,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 				}
 				if v, ok := (*parent).(*ast.TypeSpec); ok {
 					baseName += AstUtils.SetExported(v.Name.Name)
+					break
 				}
 			}
 
@@ -91,7 +92,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 								List: []*ast.Field{
 									&ast.Field{
 										Type: &ast.Ident{
-											Name: "TODO",
+											Name: checker.GetType(),
 										},
 									},
 									&ast.Field{
@@ -120,7 +121,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 											},
 										},
 										Type: &ast.Ident{
-											Name: "TODO",
+											Name: checker.GetType(),
 										},
 									},
 								},

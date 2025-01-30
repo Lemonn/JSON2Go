@@ -17,9 +17,10 @@ type ParseFunctions struct {
 	ToTypeParseFunction   string `json:"toTypeParseFunction,omitempty"`
 }
 type Tag struct {
-	SeenValues     []string        `json:"seenValues"`
-	ParseFunctions *ParseFunctions `json:"parseFunctions,omitempty"`
-	BaseType       *string         `json:"baseType,omitempty"`
+	SeenValues              []string        `json:"seenValues"`
+	CheckedNonMatchingTypes []string        `json:"checkedNonMatchingTypes"`
+	ParseFunctions          *ParseFunctions `json:"parseFunctions,omitempty"`
+	BaseType                *string         `json:"baseType,omitempty"`
 }
 
 func (j *Tag) ToTagString() (string, error) {
