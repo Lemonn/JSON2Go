@@ -11,6 +11,7 @@ type TypeDeterminationFunction interface {
 	GetType() string
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
+	GetRequiredImports() []string
 }
 
 type TimeTypeChecker struct {
@@ -92,6 +93,10 @@ func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 	return functionScaffold
 }
 
+func (t *TimeTypeChecker) GetRequiredImports() []string {
+	return []string{"github.com/araddon/dateparse", "time"}
+}
+
 type UUIDTypeChecker struct{}
 
 func (u *UUIDTypeChecker) GetType() string {
@@ -159,4 +164,8 @@ func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 		},
 	}
 	return functionScaffold
+}
+
+func (u *UUIDTypeChecker) GetRequiredImports() []string {
+	return []string{"github.com/google/uuid"}
 }

@@ -230,6 +230,7 @@ func GenerateJsonMarshall(file *ast.File) error {
 		f.Body.List = append(f.Body.List, stmts...)
 		file.Decls = append(file.Decls, f)
 	}
+	AstUtils.AddMissingImports(file, []string{"encoding/json"})
 	return nil
 }
 
@@ -1300,6 +1301,7 @@ func GenerateJsonUnmarshall(file *ast.File) error {
 	})
 	addGetAllErrorsOfTypeFunction(file)
 	addCheckForFirstErrorNotOfTypeTFunction(file)
+	AstUtils.AddMissingImports(file, []string{"encoding/json", "errors", "fmt"})
 	return nil
 }
 
