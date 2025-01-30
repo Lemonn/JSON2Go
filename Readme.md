@@ -1,64 +1,18 @@
 # JSON2Go
 
-Json2Go can generate Golang structs from a single or set of JSON-File/s. It comes with features that make it especially useful when working with undocumented JSON responses.
+## Overview
 
-## Feature List:
- - While other generators assume that the first element of an array represents the type, this one uses all observed elements.
- - Decide which type is appropriate via built-in type-determiners (time.Time and UUID) or custom ones.
- - Determines the final field type by looking at all values seen for a field. For example, if a response for a field contains ["1", "2", "2z"], the final type would be string, not int.
- - Generates a custom unmarshal function for each type. Which uses the functions provided by the type-determiners" to unmarshal special types.
- - The custom unmarshal function returns an error, which does not interrupt the unmarshalling process, upon encountering an unknown field.
- - Use multiple JSON-Files to Determine the type. This could be used to adjust the resulting structure upon newly received data.
+Json2Go could generate Golang structs from any given valid JSON document. But this is something that could be done by many tools out there. What sets Json2Go apart is the fact that it has been developed with undocumented or poorly documented JSON-APIs in mind.
 
+The fact that such APIs change without notice and often omit empty fields. Makes it hard to generate a good matching Golang data type.
+Here comes Json2Go into play. It provides features tailored to overcome the hurdles of such APIs.
 
+- The core feature to overcome this obstacle is the ability to not only look at one but at all elements of an array. To determine the resulting datatype. But also the ability to combine a set of JSON responses into one data structure.
 
+- This is paired with the ability to determine the resulting type of each field, based on all seen values. Either via built-in functions or custom ones.
 
-For Example this JSON 
-```json
-{
- "Array": [
-  {
-   "Test1": 1
-  },
-  {
-   "Test2": 1,
-   "Substructure": {"Hello":  "World"}
-  },
-  {
-   "Substructure": {},
-   "Subarray": [
-    {
-     "T": 1
-    }
-   ]
-  },
-  {
-   "Substructure": {"Hi":  "Moon"},
-   "Subarray": [
-    {
-     "T2": 1
-    }
-   ]
-  }
- ]
-}
-```
-is converted into the following Golang code
+- To counter the fact that sometimes a field is added or rarely seen. A soft error, which does not interrupt the unmarshalling process, is returned upon entering an unknown field.
 
-```golang
-Array []struct {
-	Test1		float64	`json:"Test1"`
-	Test2		float64	`json:"Test2"`
-	Substructure	struct {
-		Hello	string	`json:"Hello"`
-		Hi	string	`json:"Hi"`
-	}	`json:"Substructure"`
-	Subarray	[]struct {
-		T2	float64	`json:"T2"`
-		T	float64	`json:"T"`
-	}	`json:"Subarray"`
-}
-```
 
 ## Tag Documentation
 
@@ -186,3 +140,40 @@ if err != nil {
 `JSON2Go.GenerateJsonMarshall(file)`
 
 A marshal function is generated for each struct, that contains a custom type. 
+
+## Combine files
+
+When working with undocumented JSON-APIs it's essential to generate the datatype not from a single response. 
+But instead use a wide set of responses, to be able to get the most complete data structure. To archive this, 
+Json2Go comes with the ability to combine all equally named structs of two files into one file.
+
+Let's say we're received the following to JSON-Responses from an API:
+
+```json
+{
+  "Name": "Nick",
+  "Age": "99",
+  "Food": "BBQ"
+}
+```
+
+```json
+{
+  "Name": "Peter",
+  "Age": "22",
+  "Gender": "male",
+  "Origin": "US"
+}
+```
+
+
+
+```golang
+type RRR struct {
+	Food	string	`json:"Food" json2go:"eyJzZWVuVmFsdWVzIjpbIkJCUSJdfQ=="`
+	Gender	string	`json:"Gender" json2go:"eyJzZWVuVmFsdWVzIjpbIm1hbGUiXX0="`
+	Origin	string	`json:"Origin" json2go:"eyJzZWVuVmFsdWVzIjpbIlVTIl19"`
+	Name	string	`json:"Name" json2go:"eyJzZWVuVmFsdWVzIjpbIk5pY2siLCJQZXRlciJdfQ==" `
+	Age	string	`json:"Age" json2go:"eyJzZWVuVmFsdWVzIjpbIjk5IiwiMjIiXX0=" `
+}
+```
