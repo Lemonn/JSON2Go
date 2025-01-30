@@ -59,3 +59,47 @@ Array []struct {
 	}	`json:"Subarray"`
 }
 ```
+
+## Type Adjustment
+
+**Important, it's required to unnest your generated structs first, before using the type adjustment!**
+
+Json2Go can determine the best type of set of input values using Typeadjusters. It comes with some built-in ones 
+(time.Time and UUID) and could also be extended with custom ones.
+
+To use the type adjustment, first, create a slice of Typeadjusters. The order determines the priority, 
+should more than one create a match.
+
+```golang
+TypeCheckers := []JSON2Go.TypeDeterminationFunction{&JSON2Go.TimeTypeChecker{}}
+```
+
+Then call the adjustment function
+
+```golang
+err := JSON2Go.AdjustTypes(file, TypeCheckers)
+if err != nil {
+	fmt.Println(err)
+	return
+}
+```
+
+To use a custom adjuster, implement the following interface
+
+```golang
+type TypeDeterminationFunction interface {
+	CouldTypeBeApplied(seenValues []string) bool
+	GetType() string
+	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
+	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
+}
+```
+**_CouldTypeBeApplied_** Receives an array of strings, and returns true if the type could be applied based on the given
+set of values.
+
+**_GetType_** Returns the type as a string, for example, time.Time for the time type.
+
+_**GenerateFromTypeFunction**_ and _**GenerateToTypeFunction**_ receive a function with its name and header and 
+return values set. The function only needs to generate the function body.
+
+The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here:
