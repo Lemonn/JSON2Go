@@ -117,12 +117,13 @@ type TypeDeterminationFunction interface {
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 }
 ```
-**_CouldTypeBeApplied_** Receives an array of strings, and returns true if the type could be applied based on the given
+`CouldTypeBeApplied(seenValues []string) bool` Receives an array of strings, and returns true if the type could be applied based on the given
 set of values.
 
-**_GetType_** Returns the type as a string, for example, time.Time for the time type.
+`GetType()` Returns the type as a string, for example, time.Time for the time type.
 
-_**GenerateFromTypeFunction**_ and _**GenerateToTypeFunction**_ receive a function with its name and header and 
+`GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl` and 
+`GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl` receive a function with its name and header and 
 return values set. The function only needs to generate the function body. To generate the ast-code it's 
 advised to write the code first into a dummy function and use this amazing tool https://astextract.lu4p.xyz/ 
 to convert it to ast-code.
