@@ -139,15 +139,20 @@ func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDec
 func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
-			&ast.ExprStmt{
-				X: &ast.CallExpr{
-					Fun: &ast.SelectorExpr{
-						X: &ast.Ident{
-							Name: "baseValue",
+			&ast.ReturnStmt{
+				Results: []ast.Expr{
+					&ast.CallExpr{
+						Fun: &ast.SelectorExpr{
+							X: &ast.Ident{
+								Name: "baseValue",
+							},
+							Sel: &ast.Ident{
+								Name: "String",
+							},
 						},
-						Sel: &ast.Ident{
-							Name: "String",
-						},
+					},
+					&ast.Ident{
+						Name: "nil",
 					},
 				},
 			},
