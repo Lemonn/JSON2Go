@@ -19,6 +19,7 @@ import (
 func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction) error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
+	var requiredImports []string
 	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if basicLit, ok := (*n).(*ast.BasicLit); ok && basicLit != nil && basicLit.Kind == token.STRING {
 			return true
@@ -150,9 +151,11 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 					if err != nil {
 						return err
 					}
+					requiredImports = append(requiredImports, checker.GetRequiredImports()...)
 				}
 			}
 		}
 	}
+	AstUtils.AddMissingImports(file, requiredImports)
 	return nil
 }
