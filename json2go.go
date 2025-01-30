@@ -278,3 +278,80 @@ func combineDuplicateFields(fields []*ast.Field) (map[string]*ast.Field, error) 
 	}
 	return foundFields, nil
 }
+
+func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
+	var foundNodes []*AstUtils.FoundNodes
+	var completed = false
+	foundStructs := map[string][]*ast.StructType{}
+	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+		if _, ok := (*n).(*ast.StructType); ok && len(parents) > 0 {
+			if _, ok := (*parents[0]).(*ast.TypeSpec); ok {
+				return true
+			}
+		}
+		return false
+	}, &completed)
+
+	for _, node := range foundNodes {
+		typeSpec := (*node.Parents[0]).(*ast.TypeSpec)
+		foundStructs[typeSpec.Name.Name] = []*ast.StructType{typeSpec.Type.(*ast.StructType)}
+	}
+
+	var foundNodes1 []*AstUtils.FoundNodes
+	var completed1 = false
+	AstUtils.SearchNodes(file1, &foundNodes1, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+		if _, ok := (*n).(*ast.StructType); ok {
+			return true
+		}
+		return false
+	}, &completed1)
+
+	for _, node := range foundNodes {
+		typeSpec := (*node.Parents[0]).(*ast.TypeSpec)
+		if _, ok := foundStructs[typeSpec.Name.Name]; !ok {
+			foundStructs[typeSpec.Name.Name] = []*ast.StructType{typeSpec.Type.(*ast.StructType)}
+		} else {
+			foundStructs[typeSpec.Name.Name] = append(foundStructs[typeSpec.Name.Name], typeSpec.Type.(*ast.StructType))
+		}
+	}
+
+	outFile, err := AstUtils.GetEmptyFile(file.Name.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	for name, structs := range foundStructs {
+		var fields []*ast.Field
+		var err error
+		if len(structs) == 1 {
+			fields = structs[0].Fields.List
+		} else {
+			fields, err = combineStructFields(structs[0], structs[1])
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for i, field := range fields {
+			fields[i], err = resetToBasicType(field)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		outFile.Decls = append(outFile.Decls, &ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{&ast.TypeSpec{
+				Name: &ast.Ident{
+					Name: name,
+				},
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{
+						List: fields,
+					},
+				},
+			}},
+		})
+	}
+	return outFile, nil
+}

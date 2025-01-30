@@ -189,3 +189,18 @@ func combineTags(tag1, tag2 *ast.BasicLit) (*ast.BasicLit, error) {
 	combiners["json2go"] = &TagCombiner{}
 	return AstUtils.CombineTags(tag1, tag2, combiners)
 }
+
+func resetToBasicType(field *ast.Field) (*ast.Field, error) {
+	if field.Tag != nil {
+		lit, err := GetJson2GoTagFromBasicLit(field.Tag)
+		if err != nil {
+			return nil, err
+		}
+		if lit != nil && lit.BaseType != nil {
+			field.Type = &ast.Ident{
+				Name: *lit.BaseType,
+			}
+		}
+	}
+	return field, nil
+}
