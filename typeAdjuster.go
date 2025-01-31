@@ -1,13 +1,12 @@
 package JSON2Go
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
 	"go/token"
-	"io"
+	"reflect"
 )
 
 // AdjustTypes Goes through all fields and looks at the json2go Tag, to determine if there's a better suiting type
@@ -15,7 +14,6 @@ import (
 // Floats which could be represented as an int, are changed to int
 // Strings which could be represented as UUID are change into uuid.UUID
 // Strings which could be represented as time, are changed into time.Time
-// TODO return required imports
 func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction) error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
@@ -27,18 +25,11 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 		return false
 	}, &completed)
 	for _, node := range foundNodes {
-		if v := AstUtils.GetTagValue((*node.Node).(*ast.BasicLit).Value, "json2go"); v != "" {
-			decoded := base64.NewDecoder(base64.StdEncoding, bytes.NewBuffer([]byte(v)))
-			all, err := io.ReadAll(decoded)
-			if err != nil {
-				return err
-			}
-			var json2GoTag Tag
-			err = json.Unmarshal(all, &json2GoTag)
-			if err != nil {
-				return err
-			}
-
+		json2GoTag, err := GetJson2GoTagFromBasicLit((*node.Node).(*ast.BasicLit))
+		if err != nil {
+			return err
+		}
+		if json2GoTag != nil && json2GoTag.BaseType == nil {
 			//Get base name
 			var baseName string
 			for _, parent := range node.Parents {
@@ -52,24 +43,25 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 			}
 
 			//Get input type
-			var inputType string
-			for _, parent := range node.Parents {
-				if field, ok := (*parent).(*ast.Field); ok {
-					if ident, ok := field.Type.(*ast.Ident); ok {
-						inputType = ident.Name
-					}
+			var originalType string
+			if field, ok := (*node.Parents[0]).(*ast.Field); ok {
+				if ident, ok := field.Type.(*ast.Ident); ok {
+					originalType = ident.Name
+				} else {
+					return errors.New(fmt.Sprintf("expected field type to be *ast.Ident, but got %s",
+						reflect.TypeOf(field.Type)))
 				}
+			} else {
+				return errors.New(fmt.Sprintf("expected *ast.Field, got %s", reflect.TypeOf(node.Parents[0])))
 			}
-			if inputType == "" {
-				//TODO handle error
-			}
+
 			for _, checker := range registeredTypeCheckers {
 				if checker.CouldTypeBeApplied(json2GoTag.SeenValues) {
 					json2GoTag.ParseFunctions = &ParseFunctions{
 						FromTypeParseFunction: "from" + baseName,
 						ToTypeParseFunction:   "to" + baseName,
 					}
-					json2GoTag.BaseType = &inputType
+					json2GoTag.BaseType = &originalType
 					file.Decls = append(file.Decls, checker.GenerateFromTypeFunction(&ast.FuncDecl{
 						Name: &ast.Ident{
 							Name: json2GoTag.ParseFunctions.FromTypeParseFunction,
@@ -84,7 +76,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 											},
 										},
 										Type: &ast.Ident{
-											Name: inputType,
+											Name: originalType,
 										},
 									},
 								},
@@ -131,7 +123,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 								List: []*ast.Field{
 									&ast.Field{
 										Type: &ast.Ident{
-											Name: inputType,
+											Name: originalType,
 										},
 									},
 									&ast.Field{
