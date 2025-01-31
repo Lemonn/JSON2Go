@@ -164,7 +164,7 @@ func processSlice(fieldName *string, sliceData []interface{}, field *[]*ast.Fiel
 			},
 			Tag: &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: "`json:\"" + *fieldName + "\"`",
+				Value: "`json:\"" + *fieldName + ",omitempty\"" + "\" json2go:\"" + json2goTagValue + "\"`",
 			},
 		}
 		*field = append(*field, gen)
