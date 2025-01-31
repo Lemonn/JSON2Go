@@ -247,6 +247,19 @@ func combineStructFields(oldElement, newElement *ast.StructType) ([]*ast.Field, 
 	return combinedFields, nil
 }
 
+func shouldIgnoreStruct(st *ast.StructType) (bool, error) {
+	for _, field := range st.Fields.List {
+		lit, err := GetJson2GoTagFromBasicLit(field.Tag)
+		if err != nil {
+			return true, err
+		}
+		if lit == nil {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func combineDuplicateFields(fields []*ast.Field) (map[string]*ast.Field, error) {
 	foundFields := map[string]*ast.Field{}
 	for _, structField := range fields {
@@ -296,6 +309,13 @@ func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
 
 	for _, node := range foundNodes {
 		typeSpec := (*node.Parents[0]).(*ast.TypeSpec)
+		ignoreStruct, err := shouldIgnoreStruct(typeSpec.Type.(*ast.StructType))
+		if err != nil {
+			return nil, err
+		}
+		if ignoreStruct {
+			continue
+		}
 		foundStructs[typeSpec.Name.Name] = []*ast.StructType{typeSpec.Type.(*ast.StructType)}
 	}
 
@@ -310,6 +330,13 @@ func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
 
 	for _, node := range foundNodes1 {
 		typeSpec := (*node.Parents[0]).(*ast.TypeSpec)
+		ignoreStruct, err := shouldIgnoreStruct(typeSpec.Type.(*ast.StructType))
+		if err != nil {
+			return nil, err
+		}
+		if ignoreStruct {
+			continue
+		}
 		if _, ok := foundStructs[typeSpec.Name.Name]; !ok {
 			foundStructs[typeSpec.Name.Name] = []*ast.StructType{typeSpec.Type.(*ast.StructType)}
 		} else {
