@@ -72,19 +72,35 @@ func (j *Tag) AppendToTag(tag *ast.BasicLit) (*ast.BasicLit, error) {
 
 func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 	var jNew Tag
-	if !(j.BaseType == nil || j1.BaseType == nil || (*j.BaseType == *j1.BaseType)) {
+
+	//Combine BaseType
+	if j.BaseType == nil && j1.BaseType == nil {
+		jNew.BaseType = nil
+	} else if j.BaseType != nil && j1.BaseType == nil {
+		jNew.BaseType = j.BaseType
+	} else if j.BaseType == nil && j1.BaseType != nil {
+		jNew.BaseType = j1.BaseType
+	} else if *j.BaseType != *j1.BaseType {
 		return nil, errors.New(fmt.Sprintf("base type not equal %s:%s", *j.BaseType, *j1.BaseType))
+	} else {
+		jNew.BaseType = j1.BaseType
 	}
-	if j.ParseFunctions != nil && j1.ParseFunctions == nil {
+
+	//Combine ParseFunction
+	if j.ParseFunctions == nil && j1.ParseFunctions == nil {
+		jNew.ParseFunctions = nil
+	} else if j.ParseFunctions != nil && j1.ParseFunctions == nil {
 		jNew.ParseFunctions = j.ParseFunctions
 	} else if j.ParseFunctions == nil && j1.ParseFunctions != nil {
 		jNew.ParseFunctions = j1.ParseFunctions
-	} else if j.ParseFunctions == nil && j1.ParseFunctions == nil {
-		jNew.ParseFunctions = nil
 	} else if j.ParseFunctions.ToTypeParseFunction != j1.ParseFunctions.ToTypeParseFunction ||
 		j.ParseFunctions.FromTypeParseFunction != j1.ParseFunctions.FromTypeParseFunction {
 		return nil, errors.New("parse functions not equal")
+	} else {
+		jNew.ParseFunctions = j1.ParseFunctions
 	}
+
+	//Combine SeenValues
 	values := make(map[string]struct{})
 	jNew.SeenValues = []string{}
 	if j.SeenValues != nil {
@@ -101,14 +117,7 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 		jNew.SeenValues = append(jNew.SeenValues, v)
 	}
 
-	if j.BaseType != nil && j1.BaseType == nil {
-		jNew.BaseType = j.BaseType
-	} else if j.BaseType == nil && j1.BaseType != nil {
-		jNew.BaseType = j1.BaseType
-	} else {
-		jNew.BaseType = nil
-	}
-
+	//Combine NonMatchingTypes
 	NonMatchingTypes := make(map[string]struct{})
 	if j.CheckedNonMatchingTypes != nil {
 		for _, nonMatchingType := range j.CheckedNonMatchingTypes {
@@ -120,13 +129,13 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 			NonMatchingTypes[nonMatchingType] = struct{}{}
 		}
 	}
-
 	if NonMatchingTypes == nil {
 		jNew.CheckedNonMatchingTypes = []string{}
 	}
 	for s, _ := range NonMatchingTypes {
 		jNew.CheckedNonMatchingTypes = append(jNew.CheckedNonMatchingTypes, s)
 	}
+
 	return &jNew, nil
 }
 
