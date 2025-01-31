@@ -111,6 +111,10 @@ func processSlice(fieldName *string, sliceData []interface{}, field *[]*ast.Fiel
 	if err != nil {
 		return err
 	}
+	json2goTagValue, err := (&Tag{LastSeenTimestamp: time.Now().Unix()}).ToTagValue()
+	if err != nil {
+		return err
+	}
 
 	if len(foundFields) > 0 {
 		gen := &ast.Field{
@@ -142,7 +146,7 @@ func processSlice(fieldName *string, sliceData []interface{}, field *[]*ast.Fiel
 			},
 			Tag: &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: "`json:\"" + *fieldName + ",omitempty\"`",
+				Value: "`json:\"" + *fieldName + ",omitempty\"" + "\" json2go:\"" + json2goTagValue + "\"`",
 			},
 		}
 		*field = append(*field, gen)
