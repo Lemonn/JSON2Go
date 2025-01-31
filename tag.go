@@ -21,6 +21,7 @@ type Tag struct {
 	CheckedNonMatchingTypes []string        `json:"checkedNonMatchingTypes,omitempty"`
 	ParseFunctions          *ParseFunctions `json:"parseFunctions,omitempty"`
 	BaseType                *string         `json:"baseType,omitempty"`
+	LastSeenTimestamp       int64           `json:"lastSeenTimestamp"`
 }
 
 func (j *Tag) ToTagString() (string, error) {
@@ -134,6 +135,13 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 	}
 	for s, _ := range NonMatchingTypes {
 		jNew.CheckedNonMatchingTypes = append(jNew.CheckedNonMatchingTypes, s)
+	}
+
+	//Combine LastSeen
+	if j.LastSeenTimestamp > j1.LastSeenTimestamp {
+		jNew.LastSeenTimestamp = j.LastSeenTimestamp
+	} else {
+		jNew.LastSeenTimestamp = j1.LastSeenTimestamp
 	}
 
 	return &jNew, nil

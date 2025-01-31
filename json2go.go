@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) ([]ast.Decl, error) {
@@ -185,7 +186,8 @@ func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field
 
 		var r []byte
 		r, _ = json.Marshal(Tag{
-			SeenValues: []string{v},
+			SeenValues:        []string{v},
+			LastSeenTimestamp: time.Now().Unix(),
 		})
 		b64 := bytes.NewBuffer([]byte{})
 		raw := base64.NewEncoder(base64.StdEncoding, b64)
