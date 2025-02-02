@@ -10,6 +10,8 @@ import (
 	"go/ast"
 	"go/token"
 	"io"
+	"strconv"
+	"time"
 )
 
 type ParseFunctions struct {
@@ -22,6 +24,27 @@ type Tag struct {
 	ParseFunctions          *ParseFunctions `json:"parseFunctions,omitempty"`
 	BaseType                *string         `json:"baseType,omitempty"`
 	LastSeenTimestamp       int64           `json:"lastSeenTimestamp"`
+}
+
+func NewTagFromFieldData(fieldData interface{}) *Tag {
+	var fieldValue string
+	switch t := fieldData.(type) {
+	case float64:
+		fieldValue = strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		if t {
+			fieldValue = "true"
+		}
+		fieldValue = "false"
+	case string:
+		fieldValue = fieldData.(string)
+	}
+
+	//TODO handle empty field value
+	return &Tag{
+		SeenValues:        []string{fieldValue},
+		LastSeenTimestamp: time.Now().Unix(),
+	}
 }
 
 func (j *Tag) ToTagString() (string, error) {
