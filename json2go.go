@@ -1,15 +1,13 @@
 package JSON2Go
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
 	"go/token"
 	"reflect"
-	"strconv"
-	"time"
 )
 
 func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) ([]ast.Decl, error) {
@@ -48,10 +46,15 @@ func codeGen(fieldName *string, jsonData interface{}, fields *[]*ast.Field) erro
 			return err
 		}
 	case []interface{}:
-		err = processSlice(fieldName, result, fields)
+		f, err := processSlice(fieldName, result)
 		if err != nil {
 			return err
 		}
+		*fields = append(*fields, &ast.Field{
+			Names: []*ast.Ident{&ast.Ident{Name: *fieldName}},
+			Type:  f.Type,
+			Tag:   f.Tag,
+		})
 	default:
 		err = processField(fieldName, result, fields)
 		if err != nil {
@@ -72,7 +75,6 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 		if err != nil {
 			return err
 		}
-
 	}
 	// If name is not null, we need to generate a new struct, because we're processing a nested structure:
 	// If name is nil, we're processing fields inside an already generated structure.
@@ -97,126 +99,281 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 }
 
 // Processes JSON-Array elements
-func processSlice(fieldName *string, sliceData []interface{}, field *[]*ast.Field) error {
-	fields := &ast.FieldList{
-		List: []*ast.Field{},
-	}
+func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error) {
+	var expressionList []*ast.Field
+	// A JSON-Slice could have five cases:
+	// 1. Contains other slices
+	// 2. Contains other structs
+	// 3. Is of basic type, such as int, string etc.
+	// 4. An empty slice [], is not handled in te loop but later on.
+	// 5. Contains a mixed set of types, in this case []interface{} is used as type.
 	for _, i := range sliceData {
-		err := codeGen(fieldName, i, &fields.List)
-		if err != nil {
-			return err
+		fieldList := &ast.FieldList{
+			List: []*ast.Field{},
 		}
-	}
-	foundFields, err := combineDuplicateFields(fields.List)
-	if err != nil {
-		return err
-	}
-	json2goTagValue, err := (&Tag{LastSeenTimestamp: time.Now().Unix()}).ToTagValue()
-	if err != nil {
-		return err
+		switch v := i.(type) {
+		case []interface{}:
+			f, err := processSlice(nil, v)
+			if err != nil {
+				fmt.Println(err)
+				return nil, err
+			}
+			expressionList = append(expressionList, &ast.Field{
+				Names: func() []*ast.Ident {
+					if fieldName == nil {
+						return nil
+					}
+					return []*ast.Ident{&ast.Ident{Name: *fieldName}}
+				}(),
+				Type: &ast.ArrayType{Elt: f.Type},
+				Tag: func() *ast.BasicLit {
+					if fieldName == nil {
+						return nil
+					}
+					return &ast.BasicLit{
+						//TODO add json2go last seen tag
+						Value: "`json:\"" + *fieldName + ",omitempty\"`",
+					}
+				}(),
+			})
+		case map[string]interface{}:
+			err := processStruct(nil, v, &fieldList.List)
+			if err != nil {
+				fmt.Println(err)
+				return nil, err
+			}
+			expressionList = append(expressionList, &ast.Field{
+				Doc: nil,
+				Names: func() []*ast.Ident {
+					if fieldName == nil {
+						return nil
+					}
+					return []*ast.Ident{&ast.Ident{Name: *fieldName}}
+				}(),
+				Type: &ast.ArrayType{Elt: &ast.StructType{Fields: fieldList}},
+				Tag: func() *ast.BasicLit {
+					if fieldName == nil {
+						return nil
+					}
+					return &ast.BasicLit{
+						//TODO add json2go last seen tag
+						Value: "`json:\"" + *fieldName + ",omitempty\"`",
+					}
+				}(),
+			})
+		case interface{}:
+			err := processField(fieldName, v, &fieldList.List)
+			if err != nil {
+				fmt.Println(err)
+				return nil, err
+			}
+			expressionList = append(expressionList, fieldList.List[0])
+		}
 	}
 
-	if len(foundFields) > 0 {
-		gen := &ast.Field{
-			Names: []*ast.Ident{
-				&ast.Ident{
-					Name: fields.List[0].Names[0].Name,
-				},
-			},
-			Type: &ast.ArrayType{
-				Elt: &ast.StructType{
-					Fields: &ast.FieldList{
-						List: func() []*ast.Field {
-							var ff []*ast.Field
-							for name, f2 := range foundFields {
-								ff = append(ff, &ast.Field{
-									Names: []*ast.Ident{
-										&ast.Ident{
-											Name: AstUtils.SetExported(name),
-										},
-									},
-									Type: f2.Type,
-									Tag:  f2.Tag,
-								})
-							}
-							return ff
-						}(),
-					},
-				},
-			},
-			Tag: &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: "`json:\"" + *fieldName + ",omitempty\"" + " json2go:\"" + json2goTagValue + "\"`",
-			},
-		}
-		*field = append(*field, gen)
-	} else {
-		gen := &ast.Field{
-			Names: []*ast.Ident{
-				&ast.Ident{
-					Name: AstUtils.SetExported(*fieldName),
-				},
-			},
+	// Add an empty []Interface{}, in case of an empty array
+	if len(expressionList) == 0 {
+		expressionList = append(expressionList, &ast.Field{
 			Type: &ast.ArrayType{
 				Elt: &ast.InterfaceType{
 					Methods: &ast.FieldList{},
 				},
 			},
-			Tag: &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: "`json:\"" + *fieldName + ",omitempty\"" + " json2go:\"" + json2goTagValue + "\"`",
-			},
-		}
-		*field = append(*field, gen)
+		})
 	}
-	return nil
+
+	//Check if all expressions are of equal type, if not use []interface{} as type. If equal, deep combine them into
+	// one value per field.
+	if !expressionsEqual(expressionList) {
+		return &ast.Field{
+			Names: expressionList[0].Names,
+			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
+				Methods: &ast.FieldList{},
+			}},
+			Tag: &ast.BasicLit{
+				//TODO add json2go last seen tag
+				Value: "`json:\"" + *fieldName + ",omitempty\"`",
+			},
+		}, nil
+	} else {
+		switch expressionList[0].Type.(type) {
+		case *ast.ArrayType:
+			return combineArrays(expressionList), nil
+		case *ast.StructType:
+			return combineStructs(expressionList), nil
+		case *ast.Ident:
+			return combineFields(expressionList), nil
+		case *ast.InterfaceType:
+			return expressionList[0], nil
+		}
+
+	}
+	return nil, errors.New(fmt.Sprintf("unkown element type: %s", reflect.TypeOf(expressionList[0].Type).String()))
+}
+
+func expressionsEqual(expressions []*ast.Field) bool {
+	foundTypesMap := make(map[string]struct{})
+	for _, expr := range expressions {
+		foundTypesMap[reflect.TypeOf(expr.Type).String()] = struct{}{}
+	}
+	if len(foundTypesMap) > 1 {
+		return false
+	}
+	return true
+}
+
+func combineArrays(arrays []*ast.Field) *ast.Field {
+	var elements []*ast.Field
+	for _, array := range arrays {
+		elements = append(elements, &ast.Field{
+			Names: array.Names,
+			Type:  array.Type.(*ast.ArrayType).Elt,
+			Tag:   array.Tag,
+		})
+	}
+	if !expressionsEqual(elements) {
+		return &ast.Field{
+			Tag: elements[0].Tag,
+			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
+				Methods: &ast.FieldList{},
+			}},
+		}
+	}
+	switch elements[0].Type.(type) {
+	case *ast.ArrayType:
+		f := combineArrays(elements)
+		return &ast.Field{
+			Names: elements[0].Names,
+			Type:  &ast.ArrayType{Elt: f.Type},
+			Tag:   f.Tag,
+		}
+	case *ast.StructType:
+		f := combineStructs(elements)
+		return &ast.Field{
+			Names: elements[0].Names,
+			Type:  &ast.ArrayType{Elt: f.Type},
+			Tag:   f.Tag,
+		}
+	case *ast.Ident:
+		f := combineFields(elements)
+		return &ast.Field{
+			Names: elements[0].Names,
+			Type:  &ast.ArrayType{Elt: f.Type},
+			Tag:   f.Tag,
+		}
+	default:
+		return &ast.Field{
+			Names: elements[0].Names,
+			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
+				Methods: &ast.FieldList{},
+			}},
+		}
+	}
+}
+
+func combineStructs(structs []*ast.Field) *ast.Field {
+	fields := make(map[string][]*ast.Field)
+	fmt.Println(len(structs))
+	fmt.Println(reflect.TypeOf(structs[0].Type))
+	var combinedFields []*ast.Field
+	for _, str := range structs {
+		for _, field := range str.Type.(*ast.StructType).Fields.List {
+			if _, ok := fields[field.Names[0].Name]; !ok {
+				fields[field.Names[0].Name] = []*ast.Field{}
+			}
+			fields[field.Names[0].Name] = append(fields[field.Names[0].Name], field)
+		}
+	}
+	fmt.Println(len(fields))
+	for s, exprs := range fields {
+		fmt.Println(len(exprs))
+		if !expressionsEqual(exprs) {
+			combinedFields = append(combinedFields, &ast.Field{
+				Names: []*ast.Ident{&ast.Ident{Name: s}},
+				Type: &ast.InterfaceType{
+					Methods: &ast.FieldList{},
+				},
+			})
+		} else {
+			switch exprs[0].Type.(type) {
+			case *ast.ArrayType:
+				combinedFields = append(combinedFields, combineArrays(exprs))
+			case *ast.StructType:
+				combinedFields = append(combinedFields, combineStructs(exprs))
+			case *ast.Ident:
+				combinedFields = append(combinedFields, combineFields(exprs))
+			case *ast.InterfaceType:
+				combinedFields = append(combinedFields, &ast.Field{
+					Names: []*ast.Ident{&ast.Ident{Name: s}},
+					Type:  exprs[0].Type})
+			}
+		}
+	}
+
+	return &ast.Field{
+		Names: structs[0].Names,
+		Type: &ast.StructType{
+			Fields: &ast.FieldList{List: combinedFields},
+		},
+		Tag: structs[0].Tag,
+	}
+}
+
+func combineFields(fields []*ast.Field) *ast.Field {
+	if !expressionsEqual(fields) {
+		return &ast.Field{Type: &ast.InterfaceType{
+			Methods: &ast.FieldList{},
+		}}
+	}
+	var err error
+	tag := fields[0].Tag
+	for i := 1; i < len(fields); i++ {
+		tag, err = combineTags(tag, fields[i].Tag)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	//TODO really combine the fields
+
+	return &ast.Field{
+		Doc:     nil,
+		Names:   fields[0].Names,
+		Type:    fields[0].Type,
+		Tag:     tag,
+		Comment: nil,
+	}
 }
 
 func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field) error {
-	jsonTag, err := func() (string, error) {
-		v := func() string {
-			switch t := fieldData.(type) {
-			case float64:
-				return strconv.FormatFloat(t, 'f', -1, 64)
-			case bool:
-				if t {
-					return "true"
-				}
-				return "false"
-			default:
-				return fieldData.(string)
-			}
-		}()
-
-		var r []byte
-		r, _ = json.Marshal(Tag{
-			SeenValues:        []string{v},
-			LastSeenTimestamp: time.Now().Unix(),
-		})
-		b64 := bytes.NewBuffer([]byte{})
-		raw := base64.NewEncoder(base64.StdEncoding, b64)
-		_, err := raw.Write(r)
-		if err != nil {
-			return "", err
-		}
-		err = raw.Close()
-		return b64.String(), nil
-	}()
+	json2GoTagString, err := NewTagFromFieldData(fieldData).ToTagString()
 	if err != nil {
 		return err
 	}
 	*fields = append(*fields, &ast.Field{
 		Names: []*ast.Ident{
-			&ast.Ident{
-				Name: AstUtils.SetExported(*fieldName),
-			},
+			func() *ast.Ident {
+				if fieldName == nil {
+					return nil
+				}
+				return &ast.Ident{
+					Name: AstUtils.SetExported(*fieldName),
+				}
+			}(),
 		},
 		Type: &ast.Ident{
 			Name: reflect.TypeOf(fieldData).String(),
 		},
 		Tag: &ast.BasicLit{
-			Kind:  token.STRING,
-			Value: "`json:\"" + *fieldName + "\" json2go:\"" + jsonTag + "\"`",
+			Kind: token.STRING,
+			Value: func() string {
+				tagString := "`" + json2GoTagString
+				if fieldName != nil {
+					tagString += " json:\"" + *fieldName + "\""
+				}
+				tagString += "`"
+				return tagString
+			}(),
 		},
 	})
 	return nil
@@ -262,40 +419,6 @@ func shouldIgnoreStruct(st *ast.StructType) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func combineDuplicateFields(fields []*ast.Field) (map[string]*ast.Field, error) {
-	foundFields := map[string]*ast.Field{}
-	for _, structField := range fields {
-		if structType, ok := structField.Type.(*ast.StructType); ok {
-			for _, structTypeField := range structType.Fields.List {
-				if _, ok := foundFields[structTypeField.Names[0].Name]; !ok {
-					foundFields[structTypeField.Names[0].Name] = structTypeField
-				} else if str, ok := structTypeField.Type.(*ast.StructType); ok {
-					c, err := combineStructFields(foundFields[structTypeField.Names[0].Name].Type.(*ast.StructType), str)
-					if err != nil {
-						return nil, err
-					}
-					foundFields[structTypeField.Names[0].Name].Type.(*ast.StructType).Fields.List = c
-				} else if str, ok := structTypeField.Type.(*ast.ArrayType); ok {
-					if _, ok := str.Elt.(*ast.StructType); !ok {
-						continue
-					} else {
-						c, err := combineStructFields(foundFields[structTypeField.Names[0].Name].Type.(*ast.ArrayType).Elt.(*ast.StructType), str.Elt.(*ast.StructType))
-						if err != nil {
-							return nil, err
-						}
-						foundFields[structTypeField.Names[0].Name].Type.(*ast.ArrayType).Elt.(*ast.StructType).Fields.List = c
-					}
-				} else {
-					if _, ok := structTypeField.Type.(*ast.InterfaceType); !ok {
-						foundFields[structTypeField.Names[0].Name] = structTypeField
-					}
-				}
-			}
-		}
-	}
-	return foundFields, nil
 }
 
 func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
