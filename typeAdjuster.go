@@ -1,7 +1,6 @@
 package JSON2Go
 
 import (
-	"errors"
 	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
@@ -44,15 +43,24 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 
 			//Get input type
 			var originalType string
-			if field, ok := (*node.Parents[0]).(*ast.Field); ok {
-				if ident, ok := field.Type.(*ast.Ident); ok {
-					originalType = ident.Name
-				} else {
-					return errors.New(fmt.Sprintf("expected field type to be *ast.Ident, but got %s",
-						reflect.TypeOf(field.Type)))
+			var exp *ast.Expr
+			for i, _ := range node.Parents {
+				if field, ok := (*node.Parents[i]).(*ast.Field); ok {
+					expr := walkExpressions(&field.Type)
+					fmt.Println(reflect.TypeOf(*expr).String())
+					switch e := (*expr).(type) {
+					case *ast.SelectorExpr:
+						originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
+						exp = expr
+					case *ast.Ident:
+						originalType = e.Name
+						exp = expr
+					case *ast.InterfaceType:
+						originalType = "interface{}"
+						exp = expr
+					}
+					break
 				}
-			} else {
-				return errors.New(fmt.Sprintf("expected *ast.Field, got %s", reflect.TypeOf(node.Parents[0])))
 			}
 
 			for _, checker := range registeredTypeCheckers {
@@ -84,9 +92,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 							Results: &ast.FieldList{
 								List: []*ast.Field{
 									&ast.Field{
-										Type: &ast.Ident{
-											Name: checker.GetType(),
-										},
+										Type: checker.GetType(),
 									},
 									&ast.Field{
 										Type: &ast.Ident{
@@ -113,9 +119,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 												Name: "baseValue",
 											},
 										},
-										Type: &ast.Ident{
-											Name: checker.GetType(),
-										},
+										Type: checker.GetType(),
 									},
 								},
 							},
@@ -138,7 +142,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 							List: []ast.Stmt{},
 						},
 					}))
-					(*node.Parents[0]).(*ast.Field).Type.(*ast.Ident).Name = checker.GetType()
+					*exp = checker.GetType()
 					(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
 					if err != nil {
 						return err
@@ -146,8 +150,26 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 					requiredImports = append(requiredImports, checker.GetRequiredImports()...)
 				}
 			}
+
 		}
 	}
 	AstUtils.AddMissingImports(file, requiredImports)
+	return nil
+}
+
+// TODO add error on unsupported Expr
+func walkExpressions(expr *ast.Expr) *ast.Expr {
+	switch e := (*expr).(type) {
+	case *ast.Ident:
+		return expr
+	case *ast.StarExpr:
+		return walkExpressions(&e.X)
+	case *ast.ArrayType:
+		return walkExpressions(&e.Elt)
+	case *ast.InterfaceType:
+		return expr
+	case *ast.SelectorExpr:
+		return expr
+	}
 	return nil
 }

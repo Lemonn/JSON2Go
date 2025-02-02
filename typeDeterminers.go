@@ -8,7 +8,7 @@ import (
 
 type TypeDeterminationFunction interface {
 	CouldTypeBeApplied(seenValues []string) bool
-	GetType() string
+	GetType() ast.Expr
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GetRequiredImports() []string
@@ -18,8 +18,15 @@ type TimeTypeChecker struct {
 	layoutString string
 }
 
-func (t *TimeTypeChecker) GetType() string {
-	return "time.Time"
+func (t *TimeTypeChecker) GetType() ast.Expr {
+	return &ast.SelectorExpr{
+		X: &ast.Ident{
+			Name: "time",
+		},
+		Sel: &ast.Ident{
+			Name: "Time",
+		},
+	}
 }
 
 func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
@@ -99,8 +106,15 @@ func (t *TimeTypeChecker) GetRequiredImports() []string {
 
 type UUIDTypeChecker struct{}
 
-func (u *UUIDTypeChecker) GetType() string {
-	return "uuid.UUID"
+func (u *UUIDTypeChecker) GetType() ast.Expr {
+	return &ast.SelectorExpr{
+		X: &ast.Ident{
+			Name: "uuid",
+		},
+		Sel: &ast.Ident{
+			Name: "UUID",
+		},
+	}
 }
 
 func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
