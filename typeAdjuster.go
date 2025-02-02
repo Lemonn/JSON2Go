@@ -148,6 +148,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 						return err
 					}
 					requiredImports = append(requiredImports, checker.GetRequiredImports()...)
+					break
 				}
 			}
 
