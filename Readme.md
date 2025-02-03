@@ -41,8 +41,8 @@ The Typeadjuster could be set, to ignore the given adjusters.
 
 **Important, it's required to unnest your generated structs first, before using the type adjustment!**
 
-Json2Go can determine the best type of set of input values using Typeadjusters. It comes with some built-in ones 
-(time.Time and UUID) and could also be extended with custom ones.
+Json2Go can determine the best type of set of input values using Typeadjusters. It comes with some built-in ones
+[Build-in TypeCheckers](#build-in-typecheckers) and could also be extended with custom ones.
 
 To use the type adjustment, first, create a slice of Typeadjusters. The order determines the priority, 
 should more than one create a match.
@@ -81,6 +81,15 @@ set of values.
 return values set. The function only needs to generate the function body. To generate the ast-code it's 
 advised to write the code first into a dummy function and use this amazing tool https://astextract.lu4p.xyz/ 
 to convert it to ast-code.
+
+### Build-in TypeCheckers
+
+
+| Name            | Type      | Description                                                                                                                                                                                                                                                       |
+|-----------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| UUIDTypeChecker | uuid.UUID | Checks if values could be represented as `uuid.UUID` using `github.com/google/uuid` as a dependency                                                                                                                                                               |
+| TimeTypeChecker | time.Time | Checks if values can be represented as `time.Time` uses `github.com/araddon/dateparse` to check for valid time types.                                                                                                                                             |
+| IntTypeChecker  | int       | Checks if the given values can be represented as integers. Be careful with APIs that use the dot notation, to signal a float response, despite the values being valid integer ones. The information is lost during the process. Only the pure value plays a role. |
 
 The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here: 
 [typeDeterminers.go](https://github.com/Lemonn/JSON2Go/blob/ce85a6cc8abf255c8c8733ddbcb10d3dc40fa7a1/typeDeterminers.go#L15)
