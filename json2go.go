@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Lemonn/AstUtils"
+	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/token"
 	"reflect"
@@ -51,7 +52,7 @@ func codeGen(fieldName *string, jsonData interface{}, fields *[]*ast.Field) erro
 			return err
 		}
 		*fields = append(*fields, &ast.Field{
-			Names: []*ast.Ident{&ast.Ident{Name: *fieldName}},
+			Names: []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}},
 			Type:  f.Type,
 			Tag:   f.Tag,
 		})
@@ -82,7 +83,7 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 		structField = &ast.Field{
 			Names: []*ast.Ident{
 				&ast.Ident{
-					Name: AstUtils.SetExported(*fieldName),
+					Name: strcase.ToCamel(*fieldName),
 				},
 			},
 			Type: structType,
@@ -190,10 +191,7 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
 				Methods: &ast.FieldList{},
 			}},
-			Tag: &ast.BasicLit{
-				//TODO add json2go last seen tag
-				Value: "`json:\"" + *fieldName + ",omitempty\"`",
-			},
+			Tag: expressionList[0].Tag,
 		}, nil
 	} else {
 		switch expressionList[0].Type.(type) {
@@ -267,6 +265,7 @@ func combineArrays(arrays []*ast.Field) *ast.Field {
 			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
 				Methods: &ast.FieldList{},
 			}},
+			Tag: elements[0].Tag,
 		}
 	}
 }
@@ -357,7 +356,7 @@ func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field
 					return nil
 				}
 				return &ast.Ident{
-					Name: AstUtils.SetExported(*fieldName),
+					Name: strcase.ToCamel(*fieldName),
 				}
 			}(),
 		},
