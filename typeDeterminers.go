@@ -9,7 +9,7 @@ import (
 )
 
 type TypeDeterminationFunction interface {
-	CouldTypeBeApplied(seenValues []string) bool
+	CouldTypeBeApplied(seenValues map[string]string) bool
 	GetType() ast.Expr
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
@@ -31,9 +31,9 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
+func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
 	var err error
-	for _, value := range seenValues {
+	for value, _ := range seenValues {
 		t.layoutString, err = dateparse.ParseFormat(value)
 		if err != nil {
 			return false
@@ -119,9 +119,9 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
+func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
 	var err error
-	for _, value := range seenValues {
+	for value, _ := range seenValues {
 		_, err = uuid.Parse(value)
 		if err != nil {
 			return false
@@ -188,8 +188,8 @@ func (u *UUIDTypeChecker) GetRequiredImports() []string {
 
 type IntTypeChecker struct{}
 
-func (i *IntTypeChecker) CouldTypeBeApplied(seenValues []string) bool {
-	for _, value := range seenValues {
+func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
+	for value, _ := range seenValues {
 		_, err := strconv.Atoi(value)
 		if err != nil {
 			return false

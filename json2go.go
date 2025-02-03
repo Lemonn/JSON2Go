@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/token"
 	"reflect"
+	"time"
 )
 
 func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) ([]ast.Decl, error) {
@@ -116,31 +117,14 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 		case []interface{}:
 			f, err := processSlice(nil, v)
 			if err != nil {
-				fmt.Println(err)
 				return nil, err
 			}
 			expressionList = append(expressionList, &ast.Field{
-				Names: func() []*ast.Ident {
-					if fieldName == nil {
-						return nil
-					}
-					return []*ast.Ident{&ast.Ident{Name: *fieldName}}
-				}(),
 				Type: &ast.ArrayType{Elt: f.Type},
-				Tag: func() *ast.BasicLit {
-					if fieldName == nil {
-						return nil
-					}
-					return &ast.BasicLit{
-						//TODO add json2go last seen tag
-						Value: "`json:\"" + *fieldName + ",omitempty\"`",
-					}
-				}(),
 			})
 		case map[string]interface{}:
 			err := processStruct(nil, v, &fieldList.List)
 			if err != nil {
-				fmt.Println(err)
 				return nil, err
 			}
 			expressionList = append(expressionList, &ast.Field{
@@ -165,7 +149,6 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 		case interface{}:
 			err := processField(fieldName, v, &fieldList.List)
 			if err != nil {
-				fmt.Println(err)
 				return nil, err
 			}
 			expressionList = append(expressionList, fieldList.List[0])
@@ -174,24 +157,50 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 
 	// Add an empty []Interface{}, in case of an empty array
 	if len(expressionList) == 0 {
+		tagString, err := (&Tag{SeenValues: map[string]string{"": "interface{}"}, LastSeenTimestamp: time.Now().Unix()}).ToBasicLit()
+		if err != nil {
+			return nil, err
+		}
+		var j *ast.BasicLit
+		if fieldName != nil {
+			j = &ast.BasicLit{Value: "`json:\"" + *fieldName + ",omitempty\"`"}
+		}
+		tag, err := combineTags(j, tagString)
+		if err != nil {
+			return nil, err
+		}
 		expressionList = append(expressionList, &ast.Field{
 			Type: &ast.ArrayType{
 				Elt: &ast.InterfaceType{
 					Methods: &ast.FieldList{},
 				},
 			},
+			Tag: tag,
 		})
 	}
 
 	//Check if all expressions are of equal type, if not use []interface{} as type. If equal, deep combine them into
 	// one value per field.
 	if !expressionsEqual(expressionList) {
+		tagString, err := (&Tag{SeenValues: map[string]string{"": "interface{}"}, LastSeenTimestamp: time.Now().Unix(), MixedTypes: true}).ToBasicLit()
+		if err != nil {
+			return nil, err
+		}
+		tag, err := combineFieldTags(expressionList)
+		if err != nil {
+			return nil, err
+		}
+		tag, err = combineTags(tag, tagString)
+		if err != nil {
+			return nil, err
+		}
+
 		return &ast.Field{
 			Names: expressionList[0].Names,
 			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
 				Methods: &ast.FieldList{},
 			}},
-			Tag: expressionList[0].Tag,
+			Tag: tag,
 		}, nil
 	} else {
 		switch expressionList[0].Type.(type) {
@@ -211,10 +220,16 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 
 func expressionsEqual(expressions []*ast.Field) bool {
 	foundTypesMap := make(map[string]struct{})
+	foundFieldTypes := make(map[string]struct{})
 	for _, expr := range expressions {
 		foundTypesMap[reflect.TypeOf(expr.Type).String()] = struct{}{}
+		// Check the field types
+		// Only check for *ast.Ident, because other types such as *ast.StarExpr should not occur in the generated code
+		if v, ok := expr.Type.(*ast.Ident); ok {
+			foundFieldTypes[v.Name] = struct{}{}
+		}
 	}
-	if len(foundTypesMap) > 1 {
+	if len(foundTypesMap) > 1 || len(foundFieldTypes) > 1 {
 		return false
 	}
 	return true
@@ -230,8 +245,17 @@ func combineArrays(arrays []*ast.Field) *ast.Field {
 		})
 	}
 	if !expressionsEqual(elements) {
+		//TODO handle error
+		tag, err := combineFieldTags(elements)
+		if err != nil {
+			return nil
+		}
+		tag, err = SetMixedTypes(tag)
+		if err != nil {
+			return nil
+		}
 		return &ast.Field{
-			Tag: elements[0].Tag,
+			Tag: tag,
 			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
 				Methods: &ast.FieldList{},
 			}},
@@ -272,8 +296,6 @@ func combineArrays(arrays []*ast.Field) *ast.Field {
 
 func combineStructs(structs []*ast.Field) *ast.Field {
 	fields := make(map[string][]*ast.Field)
-	fmt.Println(len(structs))
-	fmt.Println(reflect.TypeOf(structs[0].Type))
 	var combinedFields []*ast.Field
 	for _, str := range structs {
 		for _, field := range str.Type.(*ast.StructType).Fields.List {
@@ -283,15 +305,23 @@ func combineStructs(structs []*ast.Field) *ast.Field {
 			fields[field.Names[0].Name] = append(fields[field.Names[0].Name], field)
 		}
 	}
-	fmt.Println(len(fields))
 	for s, exprs := range fields {
-		fmt.Println(len(exprs))
 		if !expressionsEqual(exprs) {
+			tag, err := combineFieldTags(exprs)
+			if err != nil {
+				return nil
+			}
+			tag, err = SetMixedTypes(tag)
+			if err != nil {
+				//TODO handle error
+				return nil
+			}
 			combinedFields = append(combinedFields, &ast.Field{
 				Names: []*ast.Ident{&ast.Ident{Name: s}},
 				Type: &ast.InterfaceType{
 					Methods: &ast.FieldList{},
 				},
+				Tag: tag,
 			})
 		} else {
 			switch exprs[0].Type.(type) {
@@ -320,9 +350,22 @@ func combineStructs(structs []*ast.Field) *ast.Field {
 
 func combineFields(fields []*ast.Field) *ast.Field {
 	if !expressionsEqual(fields) {
-		return &ast.Field{Type: &ast.InterfaceType{
-			Methods: &ast.FieldList{},
-		}}
+		tag, err := combineFieldTags(fields)
+		if err != nil {
+			return nil
+		}
+		tag, err = SetMixedTypes(tag)
+		if err != nil {
+			//TODO handle error
+			return nil
+		}
+
+		return &ast.Field{
+			Type: &ast.InterfaceType{
+				Methods: &ast.FieldList{},
+			},
+			Tag: tag,
+		}
 	}
 	var err error
 	tag := fields[0].Tag
@@ -345,7 +388,7 @@ func combineFields(fields []*ast.Field) *ast.Field {
 }
 
 func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field) error {
-	json2GoTagString, err := NewTagFromFieldData(fieldData).ToTagString()
+	json2GoTagString, err := newTagFromFieldData(fieldData).ToTagString()
 	if err != nil {
 		return err
 	}

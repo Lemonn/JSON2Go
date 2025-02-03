@@ -1,11 +1,9 @@
 package JSON2Go
 
 import (
-	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
 	"go/token"
-	"reflect"
 )
 
 // AdjustTypes Goes through all fields and looks at the json2go Tag, to determine if there's a better suiting type
@@ -47,7 +45,6 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 			for i, _ := range node.Parents {
 				if field, ok := (*node.Parents[i]).(*ast.Field); ok {
 					expr := walkExpressions(&field.Type)
-					fmt.Println(reflect.TypeOf(*expr).String())
 					switch e := (*expr).(type) {
 					case *ast.SelectorExpr:
 						originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
