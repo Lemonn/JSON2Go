@@ -423,29 +423,159 @@ func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field
 
 func combineStructFields(oldElement, newElement *ast.StructType) ([]*ast.Field, error) {
 	var combinedFields []*ast.Field
-	oldFields := map[string]*ast.Field{}
-	for _, newField := range oldElement.Fields.List {
-		oldFields[newField.Names[0].Name] = newField
+	fields := map[string][]*ast.Field{}
+
+	for _, oldField := range oldElement.Fields.List {
+		if _, ok := fields[oldField.Names[0].Name]; !ok {
+			fields[oldField.Names[0].Name] = []*ast.Field{}
+		}
+		fields[oldField.Names[0].Name] = append(fields[oldField.Names[0].Name], oldField)
 	}
+
 	for _, newField := range newElement.Fields.List {
-		if _, ok := oldFields[newField.Names[0].Name]; !ok {
-			oldFields[newField.Names[0].Name] = newField
-		} else if _, ok := newField.Type.(*ast.InterfaceType); !ok {
-			combinedTags, err := combineTags(oldFields[newField.Names[0].Name].Tag, newField.Tag)
-			if err != nil {
-				return nil, err
-			}
-			oldFields[newField.Names[0].Name] = &ast.Field{
-				Doc:     newField.Doc,
-				Names:   newField.Names,
-				Type:    newField.Type,
-				Tag:     combinedTags,
-				Comment: newField.Comment,
+		if _, ok := fields[newField.Names[0].Name]; !ok {
+			fields[newField.Names[0].Name] = []*ast.Field{}
+		}
+		fields[newField.Names[0].Name] = append(fields[newField.Names[0].Name], newField)
+	}
+
+	for _, exprs := range fields {
+		if len(exprs) == 1 {
+			combinedFields = append(combinedFields, exprs[0])
+			continue
+		}
+		json2go0, err := GetJson2GoTagFromBasicLit(exprs[0].Tag)
+		if err != nil {
+			return nil, err
+		}
+		json2go1, err := GetJson2GoTagFromBasicLit(exprs[1].Tag)
+		if err != nil {
+			return nil, err
+		}
+
+		//TODO check if to incompatible types result in the new type interface{}
+		tag, err := combineTags(exprs[0].Tag, exprs[1].Tag)
+		if err != nil {
+			return nil, err
+		}
+
+		expr0 := exprs[0].Type
+		expr1 := exprs[1].Type
+
+		fmt.Println(reflect.TypeOf(expr0), reflect.TypeOf(expr1))
+		var level int
+		//Traverse arrays
+		for reflect.TypeOf(expr0) == reflect.TypeOf(expr1) {
+			if _, ok := expr0.(*ast.ArrayType); ok {
+				if _, ok := expr1.(*ast.ArrayType); ok {
+					level++
+					expr0 = expr0.(*ast.ArrayType).Elt
+					expr1 = expr1.(*ast.ArrayType).Elt
+				} else {
+					break
+				}
+			} else {
+				break
 			}
 		}
-	}
-	for _, f := range oldFields {
-		combinedFields = append(combinedFields, f)
+
+		//Reset to base types
+		if json2go0.BaseType != nil {
+			expr0 = &ast.Ident{
+				Name: *json2go0.BaseType,
+			}
+		}
+
+		if json2go1.BaseType != nil {
+			expr1 = &ast.Ident{
+				Name: *json2go1.BaseType,
+			}
+		}
+
+		tag, err = deleteTypeAdjusterValues(tag)
+		if err != nil {
+			return nil, err
+		}
+
+		var finalExpr ast.Expr
+		if expr0 == expr1 {
+			finalExpr = expr0
+			for range level {
+				finalExpr = &ast.ArrayType{Elt: finalExpr}
+			}
+			combinedFields = append(combinedFields, &ast.Field{
+				Doc:     exprs[0].Doc,
+				Names:   exprs[0].Names,
+				Type:    finalExpr,
+				Tag:     tag,
+				Comment: exprs[0].Comment,
+			})
+		} else if _, ok := expr0.(*ast.InterfaceType); ok {
+			if json2go0.MixedTypes {
+				finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+				for range level {
+					finalExpr = &ast.ArrayType{Elt: finalExpr}
+				}
+				combinedFields = append(combinedFields, &ast.Field{
+					Doc:     exprs[0].Doc,
+					Names:   exprs[0].Names,
+					Type:    finalExpr,
+					Tag:     tag,
+					Comment: exprs[0].Comment,
+				})
+			} else {
+				finalExpr = expr1
+				for range level {
+					finalExpr = &ast.ArrayType{Elt: finalExpr}
+				}
+				combinedFields = append(combinedFields, &ast.Field{
+					Doc:     exprs[0].Doc,
+					Names:   exprs[0].Names,
+					Type:    finalExpr,
+					Tag:     tag,
+					Comment: exprs[0].Comment,
+				})
+			}
+
+		} else if _, ok := expr1.(*ast.InterfaceType); ok {
+			if json2go1.MixedTypes {
+				finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+				for range level {
+					finalExpr = &ast.ArrayType{Elt: finalExpr}
+				}
+				combinedFields = append(combinedFields, &ast.Field{
+					Doc:     exprs[0].Doc,
+					Names:   exprs[0].Names,
+					Type:    finalExpr,
+					Tag:     tag,
+					Comment: exprs[0].Comment,
+				})
+			} else {
+				finalExpr = expr0
+				for range level {
+					finalExpr = &ast.ArrayType{Elt: finalExpr}
+				}
+				combinedFields = append(combinedFields, &ast.Field{
+					Doc:     exprs[0].Doc,
+					Names:   exprs[0].Names,
+					Type:    finalExpr,
+					Tag:     tag,
+					Comment: exprs[0].Comment,
+				})
+			}
+		} else {
+			finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			for range level {
+				finalExpr = &ast.ArrayType{Elt: finalExpr}
+			}
+			combinedFields = append(combinedFields, &ast.Field{
+				Doc:     exprs[0].Doc,
+				Names:   exprs[0].Names,
+				Type:    finalExpr,
+				Tag:     tag,
+				Comment: exprs[0].Comment,
+			})
+		}
 	}
 	return combinedFields, nil
 }
@@ -525,13 +655,6 @@ func CombineStructsOfFile(file, file1 *ast.File) (*ast.File, error) {
 			fields = structs[0].Fields.List
 		} else {
 			fields, err = combineStructFields(structs[0], structs[1])
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		for i, field := range fields {
-			fields[i], err = resetToBasicType(field)
 			if err != nil {
 				return nil, err
 			}

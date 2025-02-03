@@ -299,3 +299,18 @@ func resetToBasicType(field *ast.Field) (*ast.Field, error) {
 	}
 	return field, nil
 }
+
+func deleteTypeAdjusterValues(lit *ast.BasicLit) (*ast.BasicLit, error) {
+	json2GoTag, err := GetJson2GoTagFromBasicLit(lit)
+	if err != nil {
+		return nil, err
+	}
+	json2GoTag.BaseType = nil
+	json2GoTag.ParseFunctions = nil
+	lit = AstUtils.DeleteTagByKey(lit, "json2go")
+	lit1, err := json2GoTag.ToBasicLit()
+	if err != nil {
+		return nil, err
+	}
+	return combineTags(lit, lit1)
+}
