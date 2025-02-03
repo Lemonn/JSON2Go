@@ -7,7 +7,7 @@ import (
 
 func TestTag_Combine(t *testing.T) {
 	type fields struct {
-		SeenValues              []string
+		SeenValues              map[string]string
 		CheckedNonMatchingTypes []string
 		ParseFunctions          *ParseFunctions
 		BaseType                *string
@@ -23,18 +23,18 @@ func TestTag_Combine(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "CombinationOfValidTags", fields: struct {
-			SeenValues              []string
+			SeenValues              map[string]string
 			CheckedNonMatchingTypes []string
 			ParseFunctions          *ParseFunctions
 			BaseType                *string
-		}{SeenValues: []string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a"}, CheckedNonMatchingTypes: nil, ParseFunctions: &ParseFunctions{
+		}{SeenValues: map[string]string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a": "string"}, CheckedNonMatchingTypes: nil, ParseFunctions: &ParseFunctions{
 			FromTypeParseFunction: "fromIDTest",
 			ToTypeParseFunction:   "toIDTest",
 		}, BaseType: func() *string {
 			s := "string"
 			return &s
 		}()}, args: struct{ j1 *Tag }{j1: &Tag{
-			SeenValues:              []string{"1b1e4578-8d7c-4abe-a37e-697f29a484dd"},
+			SeenValues:              map[string]string{"1b1e4578-8d7c-4abe-a37e-697f29a484dd": "string"},
 			CheckedNonMatchingTypes: nil,
 			ParseFunctions: &ParseFunctions{
 				FromTypeParseFunction: "fromIDTest",
@@ -45,7 +45,7 @@ func TestTag_Combine(t *testing.T) {
 				return &s
 			}(),
 		}}, want: &Tag{
-			SeenValues:              []string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a", "1b1e4578-8d7c-4abe-a37e-697f29a484dd"},
+			SeenValues:              map[string]string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a": "string", "1b1e4578-8d7c-4abe-a37e-697f29a484dd": "string"},
 			CheckedNonMatchingTypes: nil,
 			ParseFunctions: &ParseFunctions{
 				FromTypeParseFunction: "fromIDTest",
