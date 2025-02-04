@@ -14,10 +14,14 @@ type TypeDeterminationFunction interface {
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GetRequiredImports() []string
+	SetFile(file *ast.File)
 }
 
 type TimeTypeChecker struct {
-	layoutString string
+	// IgnoreYearOnlyStrings Set to ignore strings that consist only of a year such as 3294. Most often, they're
+	// integers not years!
+	IgnoreYearOnlyStrings bool
+	layoutString          string
 }
 
 func (t *TimeTypeChecker) GetType() ast.Expr {
@@ -35,6 +39,9 @@ func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool 
 	var err error
 	for value, _ := range seenValues {
 		t.layoutString, err = dateparse.ParseFormat(value)
+		if t.IgnoreYearOnlyStrings && t.layoutString == "2006" {
+			return false
+		}
 		if err != nil {
 			return false
 		}
@@ -105,6 +112,8 @@ func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 func (t *TimeTypeChecker) GetRequiredImports() []string {
 	return []string{"time"}
 }
+
+func (t *TimeTypeChecker) SetFile(_ *ast.File) {}
 
 type UUIDTypeChecker struct{}
 
@@ -185,6 +194,8 @@ func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 func (u *UUIDTypeChecker) GetRequiredImports() []string {
 	return []string{"github.com/google/uuid"}
 }
+
+func (u *UUIDTypeChecker) SetFile(_ *ast.File) {}
 
 type IntTypeChecker struct{}
 
@@ -368,6 +379,8 @@ func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) 
 func (i *IntTypeChecker) GetRequiredImports() []string {
 	return []string{"strconv"}
 }
+
+func (i *IntTypeChecker) SetFile(_ *ast.File) {}
 
 func getInputType(functionScaffold *ast.FuncDecl) string {
 	for _, expr := range functionScaffold.Type.Params.List {

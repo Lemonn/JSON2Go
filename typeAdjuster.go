@@ -61,6 +61,7 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 			}
 
 			for _, checker := range registeredTypeCheckers {
+				checker.SetFile(file)
 				if checker.CouldTypeBeApplied(json2GoTag.SeenValues) {
 					json2GoTag.ParseFunctions = &ParseFunctions{
 						FromTypeParseFunction: "from" + baseName,
