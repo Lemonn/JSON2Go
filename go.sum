@@ -1,5 +1,7 @@
 github.com/Lemonn/AstUtils v0.0.0-20250204182006-3938175c92bd h1:Eh/QQRg1s8LmziL0hKorXKVCVHCEfp4hAbiKmu12RZM=
 github.com/Lemonn/AstUtils v0.0.0-20250204182006-3938175c92bd/go.mod h1:LHtEQJ5mOCWxtiDTjfu40l4N5J0Mc+oDWeosAauVPdE=
+github.com/Lemonn/AstUtils v0.0.0-20250204221804-1f077c5ac840 h1:Q+x+GG5Rm8RrZIm+gL5D/1OhG3GImIunRKrNA0n0ubs=
+github.com/Lemonn/AstUtils v0.0.0-20250204221804-1f077c5ac840/go.mod h1:LHtEQJ5mOCWxtiDTjfu40l4N5J0Mc+oDWeosAauVPdE=
 github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de h1:FxWPpzIjnTlhPwqqXc4/vE0f7GvRjuAsbW+HOIe8KnA=
 github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de/go.mod h1:DCaWoUhZrYW9p1lxo/cm8EmUOOzAPSEZNGF2DK1dJgw=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=

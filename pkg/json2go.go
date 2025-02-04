@@ -201,11 +201,16 @@ func processSlice(fieldName *string, sliceData []interface{}) (*ast.Field, error
 			return nil, err
 		}
 		expressionList = append(expressionList, &ast.Field{
-			Type: &ast.InterfaceType{
-				Methods: &ast.FieldList{},
+			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
+				Methods: &ast.FieldList{}},
 			},
-			Tag:   tag,
-			Names: []*ast.Ident{{Name: strcase.ToCamel(*fieldName)}},
+			Tag: tag,
+			Names: func() []*ast.Ident {
+				if fieldName == nil {
+					return nil
+				}
+				return []*ast.Ident{{Name: strcase.ToCamel(*fieldName)}}
+			}(),
 		})
 	}
 
@@ -419,6 +424,10 @@ func combineFields(field0, field1 *ast.Field) (*ast.Field, error) {
 		finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
 		for range level {
 			finalExpr = &ast.ArrayType{Elt: finalExpr}
+		}
+		tag, err = (&Tag{MixedTypes: true}).AppendToTag(tag)
+		if err != nil {
+			return nil, err
 		}
 		return &ast.Field{
 			Doc:     field0.Doc,
