@@ -4,6 +4,7 @@ import (
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
 	"go/token"
+	"time"
 )
 
 // AdjustTypes Goes through all fields and looks at the json2go Tag, to determine if there's a better suiting type
@@ -11,7 +12,7 @@ import (
 // Floats which could be represented as an int, are changed to int
 // Strings which could be represented as UUID are change into uuid.UUID
 // Strings which could be represented as time, are changed into time.Time
-func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction) error {
+func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction, skipPreviouslyFailed bool) error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
 	var requiredImports []string
@@ -61,6 +62,11 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 			}
 
 			for _, checker := range registeredTypeCheckers {
+				if json2GoTag.SeenValues != nil {
+					if _, ok := json2GoTag.SeenValues[checker.GetName()]; ok {
+						continue
+					}
+				}
 				checker.SetFile(file)
 				if checker.CouldTypeBeApplied(json2GoTag.SeenValues) {
 					json2GoTag.ParseFunctions = &ParseFunctions{
@@ -147,6 +153,12 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 					}
 					requiredImports = append(requiredImports, checker.GetRequiredImports()...)
 					break
+				} else {
+					if json2GoTag.CheckedNonMatchingTypes == nil {
+						json2GoTag.CheckedNonMatchingTypes = map[string]int64{}
+					}
+					json2GoTag.CheckedNonMatchingTypes[checker.GetName()] = time.Now().Unix()
+					(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
 				}
 			}
 
