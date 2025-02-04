@@ -1,6 +1,9 @@
-package JSON2Go
+package pkg
 
 import (
+	"fmt"
+	"go/ast"
+	"go/token"
 	"reflect"
 	"testing"
 )
@@ -8,7 +11,7 @@ import (
 func TestTag_Combine(t *testing.T) {
 	type fields struct {
 		SeenValues              map[string]string
-		CheckedNonMatchingTypes []string
+		CheckedNonMatchingTypes map[string]int64
 		ParseFunctions          *ParseFunctions
 		BaseType                *string
 	}
@@ -24,7 +27,7 @@ func TestTag_Combine(t *testing.T) {
 	}{
 		{name: "CombinationOfValidTags", fields: struct {
 			SeenValues              map[string]string
-			CheckedNonMatchingTypes []string
+			CheckedNonMatchingTypes map[string]int64
 			ParseFunctions          *ParseFunctions
 			BaseType                *string
 		}{SeenValues: map[string]string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a": "string"}, CheckedNonMatchingTypes: nil, ParseFunctions: &ParseFunctions{
@@ -35,7 +38,7 @@ func TestTag_Combine(t *testing.T) {
 			return &s
 		}()}, args: struct{ j1 *Tag }{j1: &Tag{
 			SeenValues:              map[string]string{"1b1e4578-8d7c-4abe-a37e-697f29a484dd": "string"},
-			CheckedNonMatchingTypes: nil,
+			CheckedNonMatchingTypes: map[string]int64{},
 			ParseFunctions: &ParseFunctions{
 				FromTypeParseFunction: "fromIDTest",
 				ToTypeParseFunction:   "toIDTest",

@@ -1,4 +1,4 @@
-package JSON2Go
+package pkg
 
 import (
 	"github.com/araddon/dateparse"
@@ -15,6 +15,7 @@ type TypeDeterminationFunction interface {
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
 	GetRequiredImports() []string
 	SetFile(file *ast.File)
+	GetName() string
 }
 
 type TimeTypeChecker struct {
@@ -115,6 +116,10 @@ func (t *TimeTypeChecker) GetRequiredImports() []string {
 
 func (t *TimeTypeChecker) SetFile(_ *ast.File) {}
 
+func (t *TimeTypeChecker) GetName() string {
+	return "json2go.TimeTypeChecker"
+}
+
 type UUIDTypeChecker struct{}
 
 func (u *UUIDTypeChecker) GetType() ast.Expr {
@@ -196,6 +201,10 @@ func (u *UUIDTypeChecker) GetRequiredImports() []string {
 }
 
 func (u *UUIDTypeChecker) SetFile(_ *ast.File) {}
+
+func (u *UUIDTypeChecker) GetName() string {
+	return "json2go.UUIDTypeChecker"
+}
 
 type IntTypeChecker struct{}
 
@@ -381,6 +390,10 @@ func (i *IntTypeChecker) GetRequiredImports() []string {
 }
 
 func (i *IntTypeChecker) SetFile(_ *ast.File) {}
+
+func (i *IntTypeChecker) GetName() string {
+	return "json2go.IntTypeChecker"
+}
 
 func getInputType(functionScaffold *ast.FuncDecl) string {
 	for _, expr := range functionScaffold.Type.Params.List {

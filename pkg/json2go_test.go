@@ -1,4 +1,4 @@
-package JSON2Go
+package pkg
 
 import (
 	"fmt"
