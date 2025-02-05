@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"errors"
 	"github.com/araddon/dateparse"
 	"github.com/google/uuid"
 	"go/ast"
@@ -11,8 +12,8 @@ import (
 type TypeDeterminationFunction interface {
 	CouldTypeBeApplied(seenValues map[string]string) bool
 	GetType() ast.Expr
-	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
-	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl
+	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
+	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
 	GetRequiredImports() []string
 	SetFile(file *ast.File)
 	GetName() string
@@ -50,7 +51,7 @@ func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool 
 	return true
 }
 
-func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
+func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -77,10 +78,10 @@ func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDec
 			},
 		},
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
-func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
+func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -107,7 +108,7 @@ func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 			},
 		},
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
 func (t *TimeTypeChecker) GetRequiredImports() []string {
@@ -144,7 +145,7 @@ func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool 
 	return true
 }
 
-func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
+func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -168,10 +169,10 @@ func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDec
 			},
 		},
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
-func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
+func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -193,7 +194,7 @@ func (u *UUIDTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 			},
 		},
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
 func (u *UUIDTypeChecker) GetRequiredImports() []string {
@@ -222,8 +223,12 @@ func (i *IntTypeChecker) GetType() ast.Expr {
 	return &ast.Ident{Name: "int"}
 }
 
-func (i *IntTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
-	if getInputType(functionScaffold) == "float64" {
+func (i *IntTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+	inputType, err := getInputType(functionScaffold)
+	if err != nil {
+		return nil, err
+	}
+	if inputType == "float64" {
 		functionScaffold.Body = &ast.BlockStmt{
 			List: []ast.Stmt{
 				&ast.ReturnStmt{
@@ -315,11 +320,15 @@ func (i *IntTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl
 			},
 		}
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
-func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) *ast.FuncDecl {
-	if getReturnType(functionScaffold) == "float64" {
+func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+	returnType, err := getReturnType(functionScaffold)
+	if err != nil {
+		return nil, err
+	}
+	if returnType == "float64" {
 		functionScaffold.Body = &ast.BlockStmt{
 			List: []ast.Stmt{
 				&ast.ReturnStmt{
@@ -382,7 +391,7 @@ func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) 
 			},
 		}
 	}
-	return functionScaffold
+	return functionScaffold, nil
 }
 
 func (i *IntTypeChecker) GetRequiredImports() []string {
@@ -395,32 +404,38 @@ func (i *IntTypeChecker) GetName() string {
 	return "json2go.IntTypeChecker"
 }
 
-func getInputType(functionScaffold *ast.FuncDecl) string {
+func getInputType(functionScaffold *ast.FuncDecl) (string, error) {
 	for _, expr := range functionScaffold.Type.Params.List {
-		n := walkExpressions(&expr.Type)
+		n, err := walkExpressions(&expr.Type)
+		if err != nil {
+			return "", err
+		}
 		switch e := (*n).(type) {
 		case *ast.SelectorExpr:
-			return e.Sel.Name + "." + e.X.(*ast.Ident).Name
+			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
 		case *ast.Ident:
-			return e.Name
+			return e.Name, nil
 		case *ast.InterfaceType:
-			return "interface{}"
+			return "interface{}", nil
 		}
 	}
-	return ""
+	return "", errors.New("no valid input type")
 }
 
-func getReturnType(functionScaffold *ast.FuncDecl) string {
+func getReturnType(functionScaffold *ast.FuncDecl) (string, error) {
 	for _, expr := range functionScaffold.Type.Results.List {
-		n := walkExpressions(&expr.Type)
+		n, err := walkExpressions(&expr.Type)
+		if err != nil {
+			return "", err
+		}
 		switch e := (*n).(type) {
 		case *ast.SelectorExpr:
-			return e.Sel.Name + "." + e.X.(*ast.Ident).Name
+			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
 		case *ast.Ident:
-			return e.Name
+			return e.Name, nil
 		case *ast.InterfaceType:
-			return "interface{}"
+			return "interface{}", nil
 		}
 	}
-	return ""
+	return "", errors.New("no valid result type")
 }
