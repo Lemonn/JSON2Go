@@ -293,6 +293,7 @@ func combineStructFields(oldElement, newElement *ast.StructType) ([]*ast.Field, 
 
 // TODO set conflicting field json2go tag value
 func combineFields(field0, field1 *ast.Field) (*ast.Field, error) {
+	//Get Tags of both fields
 	json2go0, err := GetJson2GoTagFromBasicLit(field0.Tag)
 	if err != nil {
 		return nil, err
@@ -302,17 +303,16 @@ func combineFields(field0, field1 *ast.Field) (*ast.Field, error) {
 		return nil, err
 	}
 
-	//TODO check if to incompatible types result in the new type interface{}
+	//Combine both tags into one
 	tag, err := combineTags(field0.Tag, field1.Tag)
 	if err != nil {
 		return nil, err
 	}
 
+	//Traverse as long as both fields are of type *ast.Array
 	expr0 := field0.Type
 	expr1 := field1.Type
-
 	var level int
-	//Traverse arrays
 	for reflect.TypeOf(expr0) == reflect.TypeOf(expr1) {
 		if _, ok := expr0.(*ast.ArrayType); ok {
 			if _, ok := expr1.(*ast.ArrayType); ok {
@@ -328,24 +328,25 @@ func combineFields(field0, field1 *ast.Field) (*ast.Field, error) {
 	}
 
 	//Reset to base types
-	if json2go0 != nil && json2go0.BaseType != nil {
-		expr0 = &ast.Ident{
-			Name: *json2go0.BaseType,
-		}
-	}
+	resetToBaseType(&expr0, json2go0)
+	resetToBaseType(&expr1, json2go1)
 
-	if json2go1 != nil && json2go1.BaseType != nil {
-		expr1 = &ast.Ident{
-			Name: *json2go1.BaseType,
-		}
-	}
-
+	// Delete potentially present TypeAdjusterValues, as the TypeAdjuster needs to rerun after the merge
 	tag, err = deleteTypeAdjusterValues(tag)
 	if err != nil {
 		return nil, err
 	}
 
 	var finalExpr ast.Expr
+	// As we traversed down all potential array layers, the only possible cases are now
+	// 1. Both types are equal, in this case it's either a StructType, which needs to be combined.
+	// Or an equal field type such as InterfaceType which does not need special treatment.
+
+	// 2. One field is of interface type. In this case we look if it's a mixed type. If that's the case, we set it
+	// to InterfaceType. Otherwise, it's case of a previously empty field, for which we're seen values now. This means
+	// we set the field to the new values
+
+	// 3 Fields of mixed types, that could not be combined into one, in this case set field to InterfaceType
 	if reflect.TypeOf(expr0) == reflect.TypeOf(expr1) {
 		finalExpr = expr0
 		if _, ok := expr0.(*ast.StructType); ok {
@@ -436,6 +437,17 @@ func combineFields(field0, field1 *ast.Field) (*ast.Field, error) {
 			Tag:     tag,
 			Comment: field0.Comment,
 		}, nil
+	}
+}
+
+func resetToBaseType(expr *ast.Expr, json2go *Tag) {
+	if json2go != nil && json2go.BaseType != nil {
+		if *json2go.BaseType == "interface{}" {
+			*expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+		}
+		*expr = &ast.Ident{
+			Name: *json2go.BaseType,
+		}
 	}
 }
 
