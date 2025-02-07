@@ -2,9 +2,11 @@ package pkg
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"go/ast"
-	"go/token"
+	"reflect"
+	"strings"
 	"time"
 )
 
@@ -18,61 +20,114 @@ func AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunct
 	var completed bool
 	var requiredImports []string
 	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
-		if basicLit, ok := (*n).(*ast.BasicLit); ok && basicLit != nil && basicLit.Kind == token.STRING {
+		if _, ok := (*n).(*ast.StructType); ok {
+			return true
+		} else if _, ok := (*n).(*ast.ArrayType); ok {
 			return true
 		}
 		return false
 	}, &completed)
 	for _, node := range foundNodes {
-		json2GoTag, err := GetJson2GoTagFromBasicLit((*node.Node).(*ast.BasicLit))
-		if err != nil {
-			return err
-		} else if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 {
-			continue
+
+		var path string
+		for _, parent := range node.Parents {
+			if v, ok := (*parent).(*ast.TypeSpec); ok {
+				path += v.Name.Name
+				break
+			} else if v, ok := (*parent).(*ast.Field); ok {
+				path += "." + v.Names[0].Name
+			} else if _, ok := (*parent).(*ast.StructType); ok {
+				//Ignore nested structs
+				continue
+			}
 		}
 
-		if json2GoTag.BaseType == nil {
-			localRequiredImports, err := runTypeCheckers(file, registeredTypeCheckers, json2GoTag, node)
+		switch t := (*node.Node).(type) {
+		case *ast.ArrayType:
+			// Ignore if array is of type *ast.Struct
+			expr, err := walkExpressions(&t.Elt)
+			if err != nil {
+				return err
+			} else if reflect.TypeOf(expr) == reflect.TypeOf(&ast.StructType{}) {
+				continue
+			}
+			e := ast.Expr(t)
+			localRequiredImports, err := runTypeCheckers(file, registeredTypeCheckers, path, path, &e)
 			if err != nil {
 				return err
 			}
 			requiredImports = append(requiredImports, localRequiredImports...)
+		case *ast.StructType:
+			for _, field := range t.Fields.List {
+				localRequiredImports, err := runTypeCheckers(file, registeredTypeCheckers, path+"."+field.Names[0].Name, field.Names[0].Name, &field.Type)
+				if err != nil {
+					return err
+				}
+				requiredImports = append(requiredImports, localRequiredImports...)
+			}
 		}
+
 	}
 	AstUtils.AddMissingImports(file, requiredImports)
 	return nil
 }
 
-func runTypeCheckers(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction, json2GoTag *Tag, node *AstUtils.FoundNodes) ([]string, error) {
+func runTypeCheckers(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction, path string, name string, e *ast.Expr) ([]string, error) {
 	var requiredImports []string
 	var err error
 
 	//Get base name
-	baseName := getBaseName(node)
+	//baseName := getBaseName(field)
 
 	//Get input type
 	var originalType string
 	var exp *ast.Expr
-	for i, _ := range node.Parents {
-		if field, ok := (*node.Parents[i]).(*ast.Field); ok {
-			expr, err := walkExpressions(&field.Type)
-			if err != nil {
-				return nil, err
-			}
-			switch e := (*expr).(type) {
-			case *ast.SelectorExpr:
-				originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
-				exp = expr
-			case *ast.Ident:
-				originalType = e.Name
-				exp = expr
-			case *ast.InterfaceType:
-				originalType = "interface{}"
-				exp = expr
-			}
-			break
-		}
+
+	expr, err := walkExpressions(e)
+	if err != nil {
+		return nil, err
 	}
+	switch e := (*expr).(type) {
+	case *ast.SelectorExpr:
+		originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
+		exp = expr
+	case *ast.Ident:
+		originalType = e.Name
+		exp = expr
+	case *ast.InterfaceType:
+		originalType = "interface{}"
+		exp = expr
+	}
+
+	baseName := strings.ReplaceAll(path, ".", "")
+	json2GoTag := Tags[path]
+	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 || json2GoTag.BaseType != nil {
+		return nil, nil
+	}
+
+	/*
+		for i, _ := range node.Parents {
+			if field, ok := (*node.Parents[i]).(*ast.Field); ok {
+				expr, err := walkExpressions(&field.Type)
+				if err != nil {
+					return nil, err
+				}
+				switch e := (*expr).(type) {
+				case *ast.SelectorExpr:
+					originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
+					exp = expr
+				case *ast.Ident:
+					originalType = e.Name
+					exp = expr
+				case *ast.InterfaceType:
+					originalType = "interface{}"
+					exp = expr
+				}
+				break
+			}
+		}
+
+	*/
 	for _, checker := range registeredTypeCheckers {
 		if json2GoTag.SeenValues != nil {
 			if _, ok := json2GoTag.SeenValues[checker.GetName()]; ok {
@@ -167,7 +222,8 @@ func runTypeCheckers(file *ast.File, registeredTypeCheckers []TypeDeterminationF
 			file.Decls = append(file.Decls, fromTypeFunction)
 			file.Decls = append(file.Decls, toTypeFunction)
 			*exp = checker.GetType()
-			(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
+			json2GoTag.BaseType = &originalType
+			//(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
 			if err != nil {
 				return nil, err
 			}
@@ -178,7 +234,7 @@ func runTypeCheckers(file *ast.File, registeredTypeCheckers []TypeDeterminationF
 				json2GoTag.CheckedNonMatchingTypes = map[string]int64{}
 			}
 			json2GoTag.CheckedNonMatchingTypes[checker.GetName()] = time.Now().Unix()
-			(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
+			//(*node.Parents[0]).(*ast.Field).Tag, err = json2GoTag.AppendToTag((*node.Parents[0]).(*ast.Field).Tag)
 			if err != nil {
 				return nil, err
 			}
@@ -213,6 +269,9 @@ func walkExpressions(expr *ast.Expr) (*ast.Expr, error) {
 		return expr, nil
 	case *ast.SelectorExpr:
 		return expr, nil
+	case *ast.StructType:
+		return expr, nil
+
 	}
-	return nil, errors.New("unknown expression")
+	return nil, errors.New(fmt.Sprintf("unknown expression: %s", reflect.TypeOf(*expr)))
 }

@@ -33,9 +33,13 @@ type Tag struct {
 	MixedTypes bool `json:"mixedTypes,omitempty"`
 	// LastSeenTimestamp Unix timestamp. Is updated whenever a value is seen
 	LastSeenTimestamp int64 `json:"lastSeenTimestamp"`
+	// EmptyValuePresent Is the opposite of omitempty, and is set if the field contains empty values
+	EmptyValuePresent bool `json:"emptyValuePresent,omitempty"`
+	// Contains the name, as found in the JSON-File
+	JsonFieldName *string `json:"jsonFieldName,omitempty"`
 }
 
-func newTagFromFieldData(fieldData interface{}) *Tag {
+func newTagFromFieldData(fieldData interface{}, fieldName *string) *Tag {
 	var fieldValue string
 	switch t := fieldData.(type) {
 	case float64:
@@ -53,6 +57,7 @@ func newTagFromFieldData(fieldData interface{}) *Tag {
 	return &Tag{
 		SeenValues:        map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
 		LastSeenTimestamp: time.Now().Unix(),
+		JsonFieldName:     fieldName,
 	}
 }
 
@@ -143,7 +148,6 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 
 	//Combine SeenValues
 	values := make(map[string]string)
-	jNew.SeenValues = make(map[string]string)
 	if j.SeenValues != nil {
 		for value, FieldType := range j.SeenValues {
 			values[value] = FieldType
@@ -154,9 +158,7 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 			values[value] = FieldType
 		}
 	}
-	for value, FieldType := range values {
-		jNew.SeenValues[value] = FieldType
-	}
+	jNew.SeenValues = values
 
 	//Combine NonMatchingTypes
 	NonMatchingTypes := make(map[string]int64)
@@ -184,6 +186,20 @@ func (j *Tag) Combine(j1 *Tag) (*Tag, error) {
 		jNew.MixedTypes = true
 	} else {
 		jNew.MixedTypes = false
+	}
+
+	// Combine EmptyValuePresent
+	if j.EmptyValuePresent || j1.EmptyValuePresent {
+		jNew.EmptyValuePresent = true
+	} else {
+		jNew.EmptyValuePresent = false
+	}
+
+	//Combine JsonFieldName
+	if j.JsonFieldName != nil {
+		jNew.JsonFieldName = j.JsonFieldName
+	} else {
+		jNew.JsonFieldName = j1.JsonFieldName
 	}
 
 	return &jNew, nil
