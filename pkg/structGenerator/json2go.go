@@ -1,7 +1,10 @@
-package pkg
+package structGenerator
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/token"
@@ -10,25 +13,25 @@ import (
 	"time"
 )
 
-var Tags = map[string]*Tag{}
+var Tags = map[string]*fieldData.Data{}
 
-func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) ([]ast.Decl, error) {
+func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) ([]ast.Decl, map[string]*fieldData.Data, error) {
 	var JsonData interface{}
 	err := json.Unmarshal(jsonData, &JsonData)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	wrappingStruct := &ast.StructType{
 		Fields: &ast.FieldList{},
 	}
 	err = codeGen(nil, JsonData, &wrappingStruct.Fields.List, structName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(wrappingStruct.Fields.List) == 1 && wrappingStruct.Fields.List[0].Names == nil || wrappingStruct.Fields.List[0].Names[0] == nil {
-		expressions, err := walkExpressions(&wrappingStruct.Fields.List[0].Type)
+		expressions, err := utils.WalkExpressions(&wrappingStruct.Fields.List[0].Type)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if _, ok := (*expressions).(*ast.StructType); !ok {
 			decls = append(decls, &ast.GenDecl{
@@ -109,7 +112,11 @@ func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) 
 			},
 		})
 	}
-	return decls, nil
+	for s, tag := range Tags {
+		fmt.Println(s, tag.JsonFieldName)
+	}
+
+	return decls, Tags, nil
 }
 
 func codeGen(fieldName *string, jsonData interface{}, fields *[]*ast.Field, path string) error {
@@ -158,13 +165,13 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 	}
 
 	if _, ok := Tags[path]; ok {
-		combine, err := Tags[path].Combine(&Tag{LastSeenTimestamp: time.Now().Unix()})
+		combine, err := Tags[path].Combine(&fieldData.Data{LastSeenTimestamp: time.Now().Unix()})
 		if err != nil {
 			return err
 		}
 		Tags[path] = combine
 	} else {
-		Tags[path] = &Tag{LastSeenTimestamp: time.Now().Unix()}
+		Tags[path] = &fieldData.Data{LastSeenTimestamp: time.Now().Unix()}
 	}
 
 	// If name is not null, we need to generate a new struct, because we're processing a nested structure:
@@ -221,14 +228,6 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 			if err != nil {
 				return nil, err
 			}
-			tag := f.Tag
-			if fieldName != nil {
-				tag, err = combineTags(&(ast.BasicLit{Kind: token.STRING, Value: "`json:\"" + *fieldName + ",omitempty\" `"}), f.Tag)
-				if err != nil {
-					return nil, err
-				}
-			}
-
 			expressionList = append(expressionList, &ast.Field{
 				Names: func() []*ast.Ident {
 					if fieldName == nil {
@@ -237,7 +236,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 					return []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}}
 				}(),
 				Type: &ast.ArrayType{Elt: f.Type},
-				Tag:  tag,
+				Tag:  nil,
 			})
 		case map[string]interface{}:
 			err = processStruct(nil, v, &fieldList.List, path)
@@ -264,6 +263,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 					}
 				}(),
 			})
+			Tags[path].JsonFieldName = fieldName
 		case interface{}:
 			err = processField(fieldName, v, &fieldList.List, path)
 			if err != nil {
@@ -281,15 +281,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 
 	// Add an empty []Interface{}, in case of an empty array
 	if len(expressionList) == 0 {
-		tagString, err := (&Tag{EmptyValuePresent: true, LastSeenTimestamp: time.Now().Unix()}).ToBasicLit()
-		if err != nil {
-			return nil, err
-		}
-		var j *ast.BasicLit
-		if fieldName != nil {
-			j = &ast.BasicLit{Value: "`json:\"" + *fieldName + ",omitempty\" `"}
-		}
-		tag, err := combineTags(j, tagString)
+		//tagString, err := (&fieldData.Data{EmptyValuePresent: true, LastSeenTimestamp: time.Now().Unix()}).ToBasicLit()
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +289,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
 				Methods: &ast.FieldList{}},
 			},
-			Tag: tag,
+			Tag: nil,
 			Names: func() []*ast.Ident {
 				if fieldName == nil {
 					return nil
@@ -316,13 +308,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 	return f, nil
 }
 
-func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field, path string) error {
-	/*json2GoTagString, err := newTagFromFieldData(fieldData).ToTagString()
-	if err != nil {
-		return err
-	}
-
-	*/
+func processField(fieldName *string, field interface{}, fields *[]*ast.Field, path string) error {
 	*fields = append(*fields, &ast.Field{
 		Names: []*ast.Ident{
 			func() *ast.Ident {
@@ -335,7 +321,7 @@ func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field
 			}(),
 		},
 		Type: &ast.Ident{
-			Name: reflect.TypeOf(fieldData).String(),
+			Name: reflect.TypeOf(field).String(),
 		},
 	})
 	if fieldName != nil {
@@ -345,13 +331,13 @@ func processField(fieldName *string, fieldData interface{}, fields *[]*ast.Field
 		}
 	}
 	if _, ok := Tags[path]; ok {
-		combine, err := Tags[path].Combine(newTagFromFieldData(fieldData, fieldName))
+		combine, err := Tags[path].Combine(fieldData.NewTagFromFieldData(field, fieldName))
 		if err != nil {
 			return err
 		}
 		Tags[path] = combine
 	} else {
-		Tags[path] = newTagFromFieldData(fieldData, fieldName)
+		Tags[path] = fieldData.NewTagFromFieldData(field, fieldName)
 	}
 	return nil
 }
@@ -396,18 +382,18 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 	json2go0 := Tags[path]
 	json2go1 := Tags[path]
 	/*
-		json2go0, err := GetJson2GoTagFromBasicLit(field0.Tag)
+		json2go0, err := GetJson2GoTagFromBasicLit(field0.Data)
 		if err != nil {
 			return nil, err
 		}
-		json2go1, err := GetJson2GoTagFromBasicLit(field1.Tag)
+		json2go1, err := GetJson2GoTagFromBasicLit(field1.Data)
 		if err != nil {
 			return nil, err
 		}
 
 
 		//Combine both tags into one
-		tag, err := combineTags(field0.Tag, field1.Tag)
+		tag, err := combineTags(field0.Data, field1.Data)
 		if err != nil {
 			return nil, err
 		}
@@ -488,7 +474,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 			Doc:   field0.Doc,
 			Names: field0.Names,
 			Type:  finalExpr,
-			//Tag:     tag,
+			//Data:     tag,
 			Comment: field0.Comment,
 		}, nil
 	} else if _, ok := expr0.(*ast.InterfaceType); ok {
@@ -501,7 +487,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 				Doc:   field0.Doc,
 				Names: field0.Names,
 				Type:  finalExpr,
-				//Tag:     tag,
+				//Data:     tag,
 				Comment: field0.Comment,
 			}, nil
 		} else {
@@ -513,7 +499,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 				Doc:   field0.Doc,
 				Names: field0.Names,
 				Type:  finalExpr,
-				//Tag:     tag,
+				//Data:     tag,
 				Comment: field0.Comment,
 			}, nil
 		}
@@ -528,7 +514,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 				Doc:   field0.Doc,
 				Names: field0.Names,
 				Type:  finalExpr,
-				//Tag:     tag,
+				//Data:     tag,
 				Comment: field0.Comment,
 			}, nil
 		} else {
@@ -540,7 +526,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 				Doc:   field0.Doc,
 				Names: field0.Names,
 				Type:  finalExpr,
-				//Tag:     tag,
+				//Data:     tag,
 				Comment: field0.Comment,
 			}, nil
 		}
@@ -552,7 +538,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 
 		Tags[path].MixedTypes = true
 		/*
-			tag, err = (&Tag{MixedTypes: true}).AppendToTag(tag)
+			tag, err = (&Data{MixedTypes: true}).AppendToTag(tag)
 			if err != nil {
 				return nil, err
 			}
@@ -562,13 +548,13 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 			Doc:   field0.Doc,
 			Names: field0.Names,
 			Type:  finalExpr,
-			//Tag:     tag,
+			//Data:     tag,
 			Comment: field0.Comment,
 		}, nil
 	}
 }
 
-func resetToBaseType(expr *ast.Expr, json2go *Tag) {
+func resetToBaseType(expr *ast.Expr, json2go *fieldData.Data) {
 	if json2go != nil && json2go.BaseType != nil {
 		if *json2go.BaseType == "interface{}" {
 			*expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
@@ -577,19 +563,6 @@ func resetToBaseType(expr *ast.Expr, json2go *Tag) {
 			Name: *json2go.BaseType,
 		}
 	}
-}
-
-func shouldIgnoreStruct(st *ast.StructType) (bool, error) {
-	for _, field := range st.Fields.List {
-		lit, err := GetJson2GoTagFromBasicLit(field.Tag)
-		if err != nil {
-			return true, err
-		}
-		if lit == nil {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func RenamePaths() {

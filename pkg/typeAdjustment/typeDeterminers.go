@@ -1,7 +1,8 @@
-package pkg
+package typeAdjustment
 
 import (
 	"errors"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/araddon/dateparse"
 	"github.com/google/uuid"
 	"go/ast"
@@ -406,7 +407,7 @@ func (i *IntTypeChecker) GetName() string {
 
 func getInputType(functionScaffold *ast.FuncDecl) (string, error) {
 	for _, expr := range functionScaffold.Type.Params.List {
-		n, err := walkExpressions(&expr.Type)
+		n, err := utils.WalkExpressions(&expr.Type)
 		if err != nil {
 			return "", err
 		}
@@ -424,7 +425,7 @@ func getInputType(functionScaffold *ast.FuncDecl) (string, error) {
 
 func getReturnType(functionScaffold *ast.FuncDecl) (string, error) {
 	for _, expr := range functionScaffold.Type.Results.List {
-		n, err := walkExpressions(&expr.Type)
+		n, err := utils.WalkExpressions(&expr.Type)
 		if err != nil {
 			return "", err
 		}

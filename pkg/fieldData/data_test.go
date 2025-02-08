@@ -1,9 +1,6 @@
-package pkg
+package fieldData
 
 import (
-	"fmt"
-	"go/ast"
-	"go/token"
 	"reflect"
 	"testing"
 )
@@ -16,13 +13,13 @@ func TestTag_Combine(t *testing.T) {
 		BaseType                *string
 	}
 	type args struct {
-		j1 *Tag
+		j1 *Data
 	}
 	tests := []struct {
 		name    string
 		fields  fields
 		args    args
-		want    *Tag
+		want    *Data
 		wantErr bool
 	}{
 		{name: "CombinationOfValidTags", fields: struct {
@@ -36,7 +33,7 @@ func TestTag_Combine(t *testing.T) {
 		}, BaseType: func() *string {
 			s := "string"
 			return &s
-		}()}, args: struct{ j1 *Tag }{j1: &Tag{
+		}()}, args: struct{ j1 *Data }{j1: &Data{
 			SeenValues:              map[string]string{"1b1e4578-8d7c-4abe-a37e-697f29a484dd": "string"},
 			CheckedNonMatchingTypes: map[string]int64{},
 			ParseFunctions: &ParseFunctions{
@@ -47,7 +44,7 @@ func TestTag_Combine(t *testing.T) {
 				s := "string"
 				return &s
 			}(),
-		}}, want: &Tag{
+		}}, want: &Data{
 			SeenValues:              map[string]string{"01a8573c-11d9-3efb-9aa6-dcbc0880272a": "string", "1b1e4578-8d7c-4abe-a37e-697f29a484dd": "string"},
 			CheckedNonMatchingTypes: nil,
 			ParseFunctions: &ParseFunctions{
@@ -62,7 +59,7 @@ func TestTag_Combine(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			j := &Tag{
+			j := &Data{
 				SeenValues:              tt.fields.SeenValues,
 				CheckedNonMatchingTypes: tt.fields.CheckedNonMatchingTypes,
 				ParseFunctions:          tt.fields.ParseFunctions,
