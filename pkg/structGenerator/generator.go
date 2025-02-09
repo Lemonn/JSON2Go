@@ -2,14 +2,16 @@ package structGenerator
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
-	"go/ast"
 	"go/token"
+
+	//"github.com/iancoleman/strcase"
+	"go/ast"
 	"reflect"
 	"strings"
-	"time"
 )
 
 var Tags = map[string]*fieldData.Data{}
@@ -20,179 +22,218 @@ func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) 
 	if err != nil {
 		return nil, nil, err
 	}
-	wrappingStruct := &ast.StructType{
-		Fields: &ast.FieldList{},
-	}
-	err = codeGen(nil, JsonData, &wrappingStruct.Fields.List, structName)
+	/*
+		wrappingStruct := &ast.StructType{
+			Fields: &ast.FieldList{},
+		}
+
+	*/
+	fields, err := codeGen(JsonData, structName)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(wrappingStruct.Fields.List) == 1 && wrappingStruct.Fields.List[0].Names == nil || wrappingStruct.Fields.List[0].Names[0] == nil {
-		expressions, err := utils.WalkExpressions(&wrappingStruct.Fields.List[0].Type)
-		if err != nil {
-			return nil, nil, err
-		}
-		if _, ok := (*expressions).(*ast.StructType); !ok {
-			decls = append(decls, &ast.GenDecl{
-				Tok: token.TYPE,
-				Specs: []ast.Spec{
-					&ast.TypeSpec{
-						Name: &ast.Ident{
-							Name: structName,
+
+	/*
+		if len(wrappingStruct.Fields.List) == 1 && wrappingStruct.Fields.List[0].Names == nil || wrappingStruct.Fields.List[0].Names[0] == nil {
+			expressions, err := utils.WalkExpressions(&wrappingStruct.Fields.List[0].Type)
+			if err != nil {
+				return nil, nil, err
+			}
+			if _, ok := (*expressions).(*ast.StructType); !ok {
+				decls = append(decls, &ast.GenDecl{
+					Tok: token.TYPE,
+					Specs: []ast.Spec{
+						&ast.TypeSpec{
+							Name: &ast.Ident{
+								Name: structName,
+							},
+							Type:    wrappingStruct.Fields.List[0].Type,
+							Comment: wrappingStruct.Fields.List[0].Comment,
 						},
-						Type:    wrappingStruct.Fields.List[0].Type,
-						Comment: wrappingStruct.Fields.List[0].Comment,
 					},
-				},
-			})
+				})
+			} else {
+				decls = append(decls, &ast.GenDecl{
+					Tok: token.TYPE,
+					Specs: []ast.Spec{
+						&ast.TypeSpec{
+							Name: &ast.Ident{
+								Name: structName + "AnonymousArrayType",
+							},
+							Type: &ast.StructType{
+								Fields: &ast.FieldList{
+									List: (*expressions).(*ast.StructType).Fields.List,
+								},
+							},
+						},
+					},
+				})
+
+				*expressions = &ast.StarExpr{X: &ast.Ident{Name: structName + "AnonymousArrayType"}}
+				decls = append(decls, &ast.GenDecl{
+					Tok: token.TYPE,
+					Specs: []ast.Spec{
+						&ast.TypeSpec{
+							Name: &ast.Ident{
+								Name: structName,
+							},
+							Type:    wrappingStruct.Fields.List[0].Type,
+							Comment: wrappingStruct.Fields.List[0].Comment,
+						},
+					},
+				})
+
+				for s, tag := range Tags {
+					t := strings.Split(s, ".")
+					var r string
+					for _, s2 := range t {
+						if r != "" {
+							r += "."
+						}
+						if s2 == structName {
+							r += structName + "AnonymousArrayType"
+						} else {
+							r += s2
+						}
+					}
+					Tags[r] = tag
+					if r != s {
+						delete(Tags, s)
+					}
+
+				}
+
+			}
 		} else {
 			decls = append(decls, &ast.GenDecl{
 				Tok: token.TYPE,
 				Specs: []ast.Spec{
 					&ast.TypeSpec{
 						Name: &ast.Ident{
-							Name: structName + "AnonymousArrayType",
-						},
-						Type: &ast.StructType{
-							Fields: &ast.FieldList{
-								List: (*expressions).(*ast.StructType).Fields.List,
-							},
-						},
-					},
-				},
-			})
-
-			*expressions = &ast.StarExpr{X: &ast.Ident{Name: structName + "AnonymousArrayType"}}
-			decls = append(decls, &ast.GenDecl{
-				Tok: token.TYPE,
-				Specs: []ast.Spec{
-					&ast.TypeSpec{
-						Name: &ast.Ident{
 							Name: structName,
 						},
-						Type:    wrappingStruct.Fields.List[0].Type,
+						Type:    wrappingStruct,
 						Comment: wrappingStruct.Fields.List[0].Comment,
 					},
 				},
 			})
-
-			for s, tag := range Tags {
-				t := strings.Split(s, ".")
-				var r string
-				for _, s2 := range t {
-					if r != "" {
-						r += "."
-					}
-					if s2 == structName {
-						r += structName + "AnonymousArrayType"
-					} else {
-						r += s2
-					}
-				}
-				Tags[r] = tag
-				if r != s {
-					delete(Tags, s)
-				}
-
-			}
-
 		}
-	} else {
+
+	*/
+
+	if len(fields) == 1 {
+		expr, levelOfArrays, err := utils.WalkExpressionsWhitArrayCount(&fields[0].Type)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		decls = append(decls, &ast.GenDecl{
 			Tok: token.TYPE,
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: structName,
-					},
-					Type:    wrappingStruct,
-					Comment: wrappingStruct.Fields.List[0].Comment,
+					Name: ast.NewIdent(structName),
+					Type: func() ast.Expr {
+						if levelOfArrays == 0 {
+							return *expr
+						}
+						var oe ast.Expr
+						var ie *ast.Expr
+						ie, oe = utils.GeneratedNestedArray(levelOfArrays, ie, oe)
+						(*ie).(*ast.ArrayType).Elt = *expr
+						return oe
+					}(),
 				},
 			},
 		})
+
+		return decls, Tags, nil
+
 	}
+	fmt.Println("sdfsdfas")
+	decls = append(decls, &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{&ast.TypeSpec{Name: &ast.Ident{Name: "Test"}, Type: &ast.StructType{Fields: &ast.FieldList{List: fields}}}}})
 
 	return decls, Tags, nil
 }
 
-func codeGen(fieldName *string, jsonData interface{}, fields *[]*ast.Field, path string) error {
-	var err error
+var _ = &ast.File{
+	Package: 1,
+	Name: &ast.Ident{
+		Name: "main",
+	},
+	Decls: []ast.Decl{
+		&ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: &ast.Ident{
+						Name: "test1234",
+					},
+					Type: &ast.Ident{
+						Name: "int",
+					},
+				},
+			},
+		},
+	},
+}
+
+func codeGen(jsonData interface{}, path string) ([]*ast.Field, error) {
+	var fields []*ast.Field
 
 	switch result := jsonData.(type) {
 	case map[string]interface{}:
-		err = processStruct(fieldName, result, fields, path)
+		str, err := processStruct(result, path)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		fields = append(fields, &ast.Field{
+			Names: getFieldNamesFromPath(path),
+			Type:  str,
+		})
 	case []interface{}:
-		var f *ast.Field
-		f, err = processSlice(fieldName, result, path)
+		slice, err := processSlice(result, path)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		*fields = append(*fields, &ast.Field{
-			Doc:     f.Doc,
-			Names:   f.Names,
-			Type:    f.Type,
-			Tag:     f.Tag,
-			Comment: nil,
+		fields = append(fields, &ast.Field{
+			Names: getFieldNamesFromPath(path),
+			Type:  slice,
 		})
 	default:
-		err = processField(fieldName, result, fields, path)
+		field, err := processField(result, path)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		fields = append(fields, &ast.Field{
+			Names: getFieldNamesFromPath(path),
+			Type:  field,
+		})
 	}
 
-	return nil
+	return fields, nil
+}
+
+func getFieldNamesFromPath(path string) []*ast.Ident {
+	pathElements := strings.Split(path, ".")
+	return []*ast.Ident{{Name: strcase.ToCamel(pathElements[len(pathElements)-1])}}
 }
 
 // Processes JSON-Struct elements
-func processStruct(fieldName *string, structData map[string]interface{}, fields *[]*ast.Field, path string) error {
+func processStruct(structData map[string]interface{}, path string) (*ast.StructType, error) {
 	var localFields []*ast.Field
-	var err error
-	if fieldName != nil {
-		path += "." + strcase.ToCamel(*fieldName)
-	}
-	for n, i := range structData {
-		err = codeGen(&n, i, &localFields, path)
+	for fieldName, field := range structData {
+		f, err := codeGen(field, path+"."+fieldName)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		localFields = append(localFields, f...)
 	}
-
-	if _, ok := Tags[path]; ok {
-		Tags[path].LastSeenTimestamp = time.Now().Unix()
-		if fieldName != nil {
-			Tags[path].JsonFieldName = fieldName
-		}
-		Tags[path].StructType = true
-	} else {
-		Tags[path] = &fieldData.Data{LastSeenTimestamp: time.Now().Unix(), JsonFieldName: fieldName, StructType: true}
-	}
-
-	// If name is not null, we need to generate a new struct, because we're processing a nested structure:
-	// If name is nil, we're processing fields inside an already generated structure.
-	if fieldName != nil {
-		structField := &ast.Field{
-			Names: []*ast.Ident{
-				&ast.Ident{
-					Name: strcase.ToCamel(*fieldName),
-				},
-			},
-			Type: &ast.StructType{Fields: &ast.FieldList{List: localFields}},
-			Tag:  nil,
-		}
-		*fields = append(*fields, structField)
-	} else {
-		*fields = append(*fields, localFields...)
-	}
-	return nil
+	return &ast.StructType{Fields: &ast.FieldList{List: localFields}}, nil
 }
 
 // Processes JSON-Array elements
-func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast.Field, error) {
-	var expressionList []*ast.Field
+func processSlice(sliceData []interface{}, path string) (ast.Expr, error) {
+	var expressionList []ast.Expr
 	var err error
 	// A JSON-Slice could have five cases:
 	// 1. Contains other slices
@@ -202,82 +243,38 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 	// 5. Contains a mixed set of types, in this case []interface{} is used as type.
 	// Note do distinguish between conflicting types and empty types the json2go tag is used, if conflicting fields are
 	// seen, MixedTypes is set.
-
 	for _, i := range sliceData {
-		fieldList := &ast.FieldList{
-			List: []*ast.Field{},
-		}
-
 		switch v := i.(type) {
 		case []interface{}:
-			var f *ast.Field
-			f, err = processSlice(fieldName, v, path)
+			slice, err := processSlice(v, path)
 			if err != nil {
 				return nil, err
 			}
-			expressionList = append(expressionList, &ast.Field{
-				Names: func() []*ast.Ident {
-					if fieldName == nil {
-						return nil
-					}
-					return []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}}
-				}(),
-				Type: &ast.ArrayType{Elt: f.Type},
-				Tag:  nil,
-			})
+			expressionList = append(expressionList, &ast.ArrayType{Elt: slice})
 		case map[string]interface{}:
-			err = processStruct(fieldName, v, &fieldList.List, path)
+			str, err := processStruct(v, path)
 			if err != nil {
 				return nil, err
 			}
-			expressionList = append(expressionList, &ast.Field{
-				Doc: nil,
-				Names: func() []*ast.Ident {
-					if fieldName == nil {
-						return nil
-					}
-					return []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}}
-				}(),
-				Type: &ast.ArrayType{Elt: fieldList.List[0].Type},
-				Tag:  nil,
-			})
+			expressionList = append(expressionList, &ast.ArrayType{Elt: str})
 		case interface{}:
-			err = processField(fieldName, v, &fieldList.List, path)
+			ident, err := processField(v, path)
 			if err != nil {
 				return nil, err
 			}
-			expressionList = append(expressionList, &ast.Field{
-				Doc:     fieldList.List[0].Doc,
-				Names:   fieldList.List[0].Names,
-				Type:    &ast.ArrayType{Elt: fieldList.List[0].Type},
-				Tag:     fieldList.List[0].Tag,
-				Comment: fieldList.List[0].Comment,
-			})
+			expressionList = append(expressionList, &ast.ArrayType{Elt: ident})
 		}
 	}
-
 	// Add an empty []Interface{}, in case of an empty array
 	if len(expressionList) == 0 {
 		//tagString, err := (&fieldData.Data{EmptyValuePresent: true, LastSeenTimestamp: time.Now().Unix()}).ToBasicLit()
 		if err != nil {
 			return nil, err
 		}
-		expressionList = append(expressionList, &ast.Field{
-			Type: &ast.ArrayType{Elt: &ast.InterfaceType{
-				Methods: &ast.FieldList{}},
-			},
-			Tag: nil,
-			Names: func() []*ast.Ident {
-				if fieldName == nil {
-					return nil
-				}
-				return []*ast.Ident{{Name: strcase.ToCamel(*fieldName)}}
-			}(),
+		expressionList = append(expressionList, &ast.ArrayType{Elt: &ast.InterfaceType{
+			Methods: &ast.FieldList{}},
 		})
-		if fieldName != nil {
-			Tags[path+"."+strcase.ToCamel(*fieldName)] = &fieldData.Data{JsonFieldName: fieldName}
-		}
-
+		//TODO set empty field
 	}
 	f := expressionList[0]
 	for i := 1; i < len(expressionList); i++ {
@@ -289,42 +286,24 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 	return f, nil
 }
 
-func processField(fieldName *string, field interface{}, fields *[]*ast.Field, path string) error {
-	*fields = append(*fields, &ast.Field{
-		Names: []*ast.Ident{
-			func() *ast.Ident {
-				if fieldName == nil {
-					return nil
-				}
-				return &ast.Ident{
-					Name: strcase.ToCamel(*fieldName),
-				}
-			}(),
-		},
-		Type: &ast.Ident{
-			Name: reflect.TypeOf(field).String(),
-		},
-	})
-	if fieldName != nil {
-		v := strings.Split(path, ".")
-		if v[len(v)-1] != strcase.ToCamel(*fieldName) {
-			path += "." + strcase.ToCamel(*fieldName)
-		}
-	}
+func processField(field interface{}, path string) (*ast.Ident, error) {
 	if _, ok := Tags[path]; ok {
-		combine, err := Tags[path].Combine(fieldData.NewTagFromFieldData(field, fieldName))
+		combine, err := Tags[path].Combine(fieldData.NewTagFromFieldData(field))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		Tags[path] = combine
 	} else {
-		Tags[path] = fieldData.NewTagFromFieldData(field, fieldName)
+		Tags[path] = fieldData.NewTagFromFieldData(field)
 	}
-	return nil
+
+	return &ast.Ident{
+		Name: reflect.TypeOf(field).String(),
+	}, nil
+
 }
 
 func combineStructFields(oldElement, newElement *ast.StructType, path string) ([]*ast.Field, error) {
-
 	var combinedFields []*ast.Field
 	fields := map[string][]*ast.Field{}
 
@@ -347,43 +326,28 @@ func combineStructFields(oldElement, newElement *ast.StructType, path string) ([
 			combinedFields = append(combinedFields, exprs[0])
 			continue
 		}
-		field, err := combineFields(exprs[0], exprs[1], path+"."+exprs[0].Names[0].Name)
+		combinedExpr, err := combineFields(exprs[0].Type, exprs[1].Type, path+"."+exprs[0].Names[0].Name)
 		if err != nil {
 			return nil, err
 		}
-		combinedFields = append(combinedFields, field)
+		combinedFields = append(combinedFields, &ast.Field{
+			Doc:     exprs[0].Doc,
+			Names:   exprs[0].Names,
+			Type:    combinedExpr,
+			Tag:     exprs[0].Tag,
+			Comment: exprs[0].Comment,
+		})
 	}
 	return combinedFields, nil
 }
 
 // TODO set conflicting field json2go tag value
-func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
+func combineFields(expr0, expr1 ast.Expr, path string) (ast.Expr, error) {
 	//Get Tags of both fields
-
 	json2go0 := Tags[path]
 	json2go1 := Tags[path]
-	/*
-		json2go0, err := GetJson2GoTagFromBasicLit(field0.Data)
-		if err != nil {
-			return nil, err
-		}
-		json2go1, err := GetJson2GoTagFromBasicLit(field1.Data)
-		if err != nil {
-			return nil, err
-		}
-
-
-		//Combine both tags into one
-		tag, err := combineTags(field0.Data, field1.Data)
-		if err != nil {
-			return nil, err
-		}
-
-	*/
 
 	//Traverse as long as both fields are of type *ast.Array
-	expr0 := field0.Type
-	expr1 := field1.Type
 	var level int
 	for reflect.TypeOf(expr0) == reflect.TypeOf(expr1) {
 		if _, ok := expr0.(*ast.ArrayType); ok {
@@ -399,19 +363,6 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 		}
 	}
 
-	/*
-		//Reset to base types
-		resetToBaseType(&expr0, json2go0)
-		resetToBaseType(&expr1, json2go1)
-
-		// Delete potentially present TypeAdjusterValues, as the TypeAdjuster needs to rerun after the merge
-		tag, err = deleteTypeAdjusterValues(tag)
-		if err != nil {
-			return nil, err
-		}
-
-	*/
-
 	var finalExpr ast.Expr
 	// As we traversed down all potential array layers, the only possible cases are now
 	// 1. Both types are equal, in this case it's either a StructType, which needs to be combined.
@@ -425,19 +376,7 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 	if reflect.TypeOf(expr0) == reflect.TypeOf(expr1) {
 		finalExpr = expr0
 		if _, ok := expr0.(*ast.StructType); ok {
-			var l string
-			if field0.Names != nil && len(field1.Names) > 0 {
-				v := strings.Split(path, ".")
-				if v[len(v)-1] != strcase.ToCamel(field0.Names[0].Name) {
-					path += "." + strcase.ToCamel(field0.Names[0].Name)
-				} else {
-					l = path
-				}
-
-			} else {
-				l = path
-			}
-			fields, err := combineStructFields(expr0.(*ast.StructType), expr1.(*ast.StructType), l)
+			fields, err := combineStructFields(expr0.(*ast.StructType), expr1.(*ast.StructType), path)
 			if err != nil {
 				return nil, err
 			}
@@ -450,39 +389,20 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 		for range level {
 			finalExpr = &ast.ArrayType{Elt: finalExpr}
 		}
-
-		return &ast.Field{
-			Doc:   field0.Doc,
-			Names: field0.Names,
-			Type:  finalExpr,
-			//Data:     tag,
-			Comment: field0.Comment,
-		}, nil
+		return finalExpr, nil
 	} else if _, ok := expr0.(*ast.InterfaceType); ok {
 		if json2go0 != nil && json2go0.MixedTypes {
 			finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}
 			}
-			return &ast.Field{
-				Doc:   field0.Doc,
-				Names: field0.Names,
-				Type:  finalExpr,
-				//Data:     tag,
-				Comment: field0.Comment,
-			}, nil
+			return finalExpr, nil
 		} else {
 			finalExpr = expr1
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}
 			}
-			return &ast.Field{
-				Doc:   field0.Doc,
-				Names: field0.Names,
-				Type:  finalExpr,
-				//Data:     tag,
-				Comment: field0.Comment,
-			}, nil
+			return finalExpr, nil
 		}
 
 	} else if _, ok := expr1.(*ast.InterfaceType); ok {
@@ -491,47 +411,21 @@ func combineFields(field0, field1 *ast.Field, path string) (*ast.Field, error) {
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}
 			}
-			return &ast.Field{
-				Doc:   field0.Doc,
-				Names: field0.Names,
-				Type:  finalExpr,
-				//Data:     tag,
-				Comment: field0.Comment,
-			}, nil
+			return finalExpr, nil
 		} else {
 			finalExpr = expr0
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}
 			}
-			return &ast.Field{
-				Doc:   field0.Doc,
-				Names: field0.Names,
-				Type:  finalExpr,
-				//Data:     tag,
-				Comment: field0.Comment,
-			}, nil
+			return finalExpr, nil
 		}
 	} else {
 		finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
 		for range level {
 			finalExpr = &ast.ArrayType{Elt: finalExpr}
 		}
-
 		Tags[path].MixedTypes = true
-		/*
-			tag, err = (&Data{MixedTypes: true}).AppendToTag(tag)
-			if err != nil {
-				return nil, err
-			}
-
-		*/
-		return &ast.Field{
-			Doc:   field0.Doc,
-			Names: field0.Names,
-			Type:  finalExpr,
-			//Data:     tag,
-			Comment: field0.Comment,
-		}, nil
+		return finalExpr, nil
 	}
 }
 

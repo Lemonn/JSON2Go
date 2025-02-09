@@ -47,7 +47,6 @@ type Data struct {
 
 func (j *Data) Combine(j1 *Data) (*Data, error) {
 	var jNew Data
-
 	//Combine BaseType
 	if j.BaseType == nil && j1.BaseType == nil {
 		jNew.BaseType = nil
@@ -133,7 +132,7 @@ func (j *Data) Combine(j1 *Data) (*Data, error) {
 	return &jNew, nil
 }
 
-func NewTagFromFieldData(fieldData interface{}, fieldName *string) *Data {
+func NewTagFromFieldData(fieldData interface{}) *Data {
 	var fieldValue string
 	switch t := fieldData.(type) {
 	case float64:
@@ -151,6 +150,5 @@ func NewTagFromFieldData(fieldData interface{}, fieldName *string) *Data {
 	return &Data{
 		SeenValues:        map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
 		LastSeenTimestamp: time.Now().Unix(),
-		JsonFieldName:     fieldName,
 	}
 }
