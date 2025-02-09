@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"github.com/Lemonn/JSON2Go/pkg/structGenerator"
 	"go/ast"
 	"go/token"
 	"reflect"
@@ -62,7 +61,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	for _, field := range str.Fields.List {
 
 		var fData *fieldData.Data
-		if v, ok := structGenerator.Tags[path+"."+field.Names[0].Name]; !ok {
+		if v, ok := g.data[path+"."+field.Names[0].Name]; !ok {
 			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
 		} else if v.JsonFieldName == nil {
 			continue

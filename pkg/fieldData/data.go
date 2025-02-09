@@ -42,6 +42,7 @@ type Data struct {
 	// IncompatibleCustomType error, for example if a type such as time.Time stays the same but the underling
 	// time strings are incompatible
 	TypeAdjusterData json.RawMessage `json:"typeAdjusterData,omitempty"`
+	StructType       bool            `json:"structType,omitempty"`
 }
 
 func (j *Data) Combine(j1 *Data) (*Data, error) {

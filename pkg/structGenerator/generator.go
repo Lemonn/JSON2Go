@@ -143,6 +143,7 @@ func codeGen(fieldName *string, jsonData interface{}, fields *[]*ast.Field, path
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -161,13 +162,13 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 	}
 
 	if _, ok := Tags[path]; ok {
-		combine, err := Tags[path].Combine(&fieldData.Data{LastSeenTimestamp: time.Now().Unix()})
-		if err != nil {
-			return err
+		Tags[path].LastSeenTimestamp = time.Now().Unix()
+		if fieldName != nil {
+			Tags[path].JsonFieldName = fieldName
 		}
-		Tags[path] = combine
+		Tags[path].StructType = true
 	} else {
-		Tags[path] = &fieldData.Data{LastSeenTimestamp: time.Now().Unix()}
+		Tags[path] = &fieldData.Data{LastSeenTimestamp: time.Now().Unix(), JsonFieldName: fieldName, StructType: true}
 	}
 
 	// If name is not null, we need to generate a new struct, because we're processing a nested structure:
@@ -207,17 +208,10 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 			List: []*ast.Field{},
 		}
 
-		if fieldName != nil {
-			v := strings.Split(path, ".")
-			if v[len(v)-1] != strcase.ToCamel(*fieldName) {
-				path += "." + strcase.ToCamel(*fieldName)
-			}
-		}
-
 		switch v := i.(type) {
 		case []interface{}:
 			var f *ast.Field
-			f, err = processSlice(nil, v, path)
+			f, err = processSlice(fieldName, v, path)
 			if err != nil {
 				return nil, err
 			}
@@ -232,7 +226,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 				Tag:  nil,
 			})
 		case map[string]interface{}:
-			err = processStruct(nil, v, &fieldList.List, path)
+			err = processStruct(fieldName, v, &fieldList.List, path)
 			if err != nil {
 				return nil, err
 			}
@@ -244,10 +238,9 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 					}
 					return []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}}
 				}(),
-				Type: &ast.ArrayType{Elt: &ast.StructType{Fields: fieldList}},
+				Type: &ast.ArrayType{Elt: fieldList.List[0].Type},
 				Tag:  nil,
 			})
-			Tags[path].JsonFieldName = fieldName
 		case interface{}:
 			err = processField(fieldName, v, &fieldList.List, path)
 			if err != nil {
@@ -556,11 +549,16 @@ func resetToBaseType(expr *ast.Expr, json2go *fieldData.Data) {
 func RenamePaths(tags map[string]*fieldData.Data) map[string]*fieldData.Data {
 	for s, tag := range tags {
 		pathElements := strings.Split(s, ".")
-		if len(pathElements) > 1 && s != pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1] {
+		if len(pathElements) > 1 {
+			if tag.StructType {
+				Tags[pathElements[len(pathElements)-1]] = &fieldData.Data{LastSeenTimestamp: tag.LastSeenTimestamp, StructType: true}
+			}
+			tag.StructType = false
 			Tags[pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1]] = tag
-			delete(Tags, s)
+			if s != pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1] {
+				delete(Tags, s)
+			}
 		}
-
 	}
 	return tags
 }

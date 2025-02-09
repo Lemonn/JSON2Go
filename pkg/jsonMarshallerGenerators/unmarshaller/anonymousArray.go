@@ -6,10 +6,11 @@ import (
 	"go/token"
 	"reflect"
 	"strconv"
+	"unicode"
 )
 
 // Handles the case where we have an array of non struct type
-func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType string) ([]ast.Stmt, []string) {
+func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType string, name string) ([]ast.Stmt, []string) {
 	var stmts []ast.Stmt
 
 	lit := g.data[path]
@@ -153,12 +154,12 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 							(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
 								X: &ast.StarExpr{
 									X: &ast.Ident{
-										Name: "R",
+										Name: string(unicode.ToLower([]rune(name)[0])),
 									},
 								},
 							}
 						} else {
-							return &ast.StarExpr{X: &ast.Ident{Name: "R"}}
+							return &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}
 						}
 						return oe
 					}(),
@@ -196,12 +197,12 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 									(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
 										X: &ast.StarExpr{
 											X: &ast.Ident{
-												Name: "R",
+												Name: string(unicode.ToLower([]rune(name)[0])),
 											},
 										},
 									}
 								} else {
-									return &ast.StarExpr{X: &ast.Ident{Name: "R"}}
+									return &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}
 								}
 								return oe
 							}(),
@@ -340,14 +341,14 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 					if ie == nil {
 						return &ast.StarExpr{
 							X: &ast.Ident{
-								Name: "R",
+								Name: string(unicode.ToLower([]rune(name)[0])),
 							},
 						}
 					}
 					(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
 						X: &ast.StarExpr{
 							X: &ast.Ident{
-								Name: "R",
+								Name: string(unicode.ToLower([]rune(name)[0])),
 							},
 						},
 					}
@@ -387,14 +388,14 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 							if ie == nil {
 								return &ast.StarExpr{
 									X: &ast.Ident{
-										Name: "R",
+										Name: string(unicode.ToLower([]rune(name)[0])),
 									},
 								}
 							}
 							(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
 								X: &ast.StarExpr{
 									X: &ast.Ident{
-										Name: "R",
+										Name: string(unicode.ToLower([]rune(name)[0])),
 									},
 								},
 							}

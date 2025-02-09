@@ -2,21 +2,122 @@ package unmarshaller
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/structGenerator"
 	"go/ast"
 	"go/token"
+	"unicode"
 )
 
-func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stmt, []string, error) {
+func (g *Generator) structGenerator(str *ast.StructType, path string, name string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
+	var required bool
+
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "data",
+						},
+					},
+					Type: &ast.MapType{
+						Key: &ast.Ident{
+							Name: "string",
+						},
+						Value: &ast.SelectorExpr{
+							X: &ast.Ident{
+								Name: "json",
+							},
+							Sel: &ast.Ident{
+								Name: "RawMessage",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "joinedErrors",
+						},
+					},
+					Type: &ast.Ident{
+						Name: "error",
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.AssignStmt{
+		Lhs: []ast.Expr{
+			&ast.Ident{
+				Name: "err",
+			},
+		},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			&ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X: &ast.Ident{
+						Name: "json",
+					},
+					Sel: &ast.Ident{
+						Name: "Unmarshal",
+					},
+				},
+				Args: []ast.Expr{
+					&ast.Ident{
+						Name: "bytes",
+					},
+					&ast.UnaryExpr{
+						Op: token.AND,
+						X: &ast.Ident{
+							Name: "data",
+						},
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.IfStmt{
+		Cond: &ast.BinaryExpr{
+			X: &ast.Ident{
+				Name: "err",
+			},
+			Op: token.NEQ,
+			Y: &ast.Ident{
+				Name: "nil",
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						&ast.Ident{
+							Name: "err",
+						},
+					},
+				},
+			},
+		},
+	})
 
 	for _, field := range str.Fields.List {
 		var fData *fieldData.Data
 		var jsonName string
 		if v, ok := structGenerator.Tags[path+"."+field.Names[0].Name]; !ok {
-			return nil, nil, errors.New("struct field not found")
+			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
 		} else if v.JsonFieldName == nil {
 			continue
 		} else {
@@ -25,6 +126,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 		}
 
 		if fData.ParseFunctions != nil {
+			required = true
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
 					Lhs: []ast.Expr{
@@ -127,7 +229,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 							Lhs: []ast.Expr{
 								&ast.SelectorExpr{
 									X: &ast.Ident{
-										Name: "s",
+										Name: string(unicode.ToLower([]rune(name)[0])),
 									},
 									Sel: &ast.Ident{
 										Name: field.Names[0].Name,
@@ -261,7 +363,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 											Op: token.AND,
 											X: &ast.SelectorExpr{
 												X: &ast.Ident{
-													Name: "s",
+													Name: string(unicode.ToLower([]rune(name)[0])),
 												},
 												Sel: &ast.Ident{
 													Name: field.Names[0].Name,
@@ -442,7 +544,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 											Op: token.AND,
 											X: &ast.SelectorExpr{
 												X: &ast.Ident{
-													Name: "s",
+													Name: string(unicode.ToLower([]rune(name)[0])),
 												},
 												Sel: &ast.Ident{
 													Name: field.Names[0].Name,
@@ -575,159 +677,8 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 		}
 	}
 
-	if len(stmts) == 0 {
-		return stmts, nil, nil
-	}
-
-	// Scaffold of custom unmarshall function
-	f := &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{
-						&ast.Ident{
-							Name: "s",
-						},
-					},
-					Type: &ast.StarExpr{
-						X: &ast.Ident{
-							Name: (*node.Parents[0]).(*ast.TypeSpec).Name.Name,
-						},
-					},
-				},
-			},
-		},
-		Name: &ast.Ident{
-			Name: "UnmarshalJSON",
-		},
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{
-				List: []*ast.Field{
-					&ast.Field{
-						Names: []*ast.Ident{
-							&ast.Ident{
-								Name: "bytes",
-							},
-						},
-						Type: &ast.ArrayType{
-							Elt: &ast.Ident{
-								Name: "byte",
-							},
-						},
-					},
-				},
-			},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					&ast.Field{
-						Type: &ast.Ident{
-							Name: "error",
-						},
-					},
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.DeclStmt{
-					Decl: &ast.GenDecl{
-						Tok: token.VAR,
-						Specs: []ast.Spec{
-							&ast.ValueSpec{
-								Names: []*ast.Ident{
-									&ast.Ident{
-										Name: "data",
-									},
-								},
-								Type: &ast.MapType{
-									Key: &ast.Ident{
-										Name: "string",
-									},
-									Value: &ast.SelectorExpr{
-										X: &ast.Ident{
-											Name: "json",
-										},
-										Sel: &ast.Ident{
-											Name: "RawMessage",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-				&ast.DeclStmt{
-					Decl: &ast.GenDecl{
-						Tok: token.VAR,
-						Specs: []ast.Spec{
-							&ast.ValueSpec{
-								Names: []*ast.Ident{
-									&ast.Ident{
-										Name: "joinedErrors",
-									},
-								},
-								Type: &ast.Ident{
-									Name: "error",
-								},
-							},
-						},
-					},
-				},
-				&ast.AssignStmt{
-					Lhs: []ast.Expr{
-						&ast.Ident{
-							Name: "err",
-						},
-					},
-					Tok: token.DEFINE,
-					Rhs: []ast.Expr{
-						&ast.CallExpr{
-							Fun: &ast.SelectorExpr{
-								X: &ast.Ident{
-									Name: "json",
-								},
-								Sel: &ast.Ident{
-									Name: "Unmarshal",
-								},
-							},
-							Args: []ast.Expr{
-								&ast.Ident{
-									Name: "bytes",
-								},
-								&ast.UnaryExpr{
-									Op: token.AND,
-									X: &ast.Ident{
-										Name: "data",
-									},
-								},
-							},
-						},
-					},
-				},
-				&ast.IfStmt{
-					Cond: &ast.BinaryExpr{
-						X: &ast.Ident{
-							Name: "err",
-						},
-						Op: token.NEQ,
-						Y: &ast.Ident{
-							Name: "nil",
-						},
-					},
-					Body: &ast.BlockStmt{
-						List: []ast.Stmt{
-							&ast.ReturnStmt{
-								Results: []ast.Expr{
-									&ast.Ident{
-										Name: "err",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+	if len(stmts) == 0 || !required {
+		return []ast.Stmt{}, nil, nil
 	}
 
 	// Add If statement to custom unmarshall function that checks for additional elements,
@@ -786,7 +737,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 												},
 												Value: &ast.BasicLit{
 													Kind:  token.STRING,
-													Value: "\"" + (*node.Parents[0]).(*ast.TypeSpec).Name.Name + "\"",
+													Value: "\"" + name + "\"",
 												},
 											},
 											&ast.KeyValueExpr{
@@ -812,252 +763,6 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 		Results: []ast.Expr{
 			&ast.Ident{
 				Name: "joinedErrors",
-			},
-		},
-	})
-
-	// Add statements to custom unmarshall function
-	for _, stmt := range stmts {
-		f.Body.List = append(f.Body.List, stmt)
-	}
-
-	//Add custom json unmarshall function to file
-	file.Decls = append(file.Decls, f)
-
-	// Add AdditionalElementError + support methods
-	file.Decls = append(file.Decls, &ast.GenDecl{
-		Tok: token.TYPE,
-		Specs: []ast.Spec{
-			&ast.TypeSpec{
-				Name: &ast.Ident{
-					Name: "AdditionalElementsError",
-				},
-				Type: &ast.StructType{
-					Fields: &ast.FieldList{
-						List: []*ast.Field{
-							&ast.Field{
-								Names: []*ast.Ident{
-									&ast.Ident{
-										Name: "ParsedObj",
-									},
-								},
-								Type: &ast.Ident{
-									Name: "string",
-								},
-							},
-							&ast.Field{
-								Names: []*ast.Ident{
-									&ast.Ident{
-										Name: "Elements",
-									},
-								},
-								Type: &ast.MapType{
-									Key: &ast.Ident{
-										Name: "string",
-									},
-									Value: &ast.SelectorExpr{
-										X: &ast.Ident{
-											Name: "json",
-										},
-										Sel: &ast.Ident{
-											Name: "RawMessage",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	file.Decls = append(file.Decls, &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{
-						&ast.Ident{
-							Name: "j",
-						},
-					},
-					Type: &ast.StarExpr{
-						X: &ast.Ident{
-							Name: "AdditionalElementsError",
-						},
-					},
-				},
-			},
-		},
-		Name: &ast.Ident{
-			Name: "String",
-		},
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					&ast.Field{
-						Type: &ast.Ident{
-							Name: "string",
-						},
-					},
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.CallExpr{
-							Fun: &ast.SelectorExpr{
-								X: &ast.Ident{
-									Name: "j",
-								},
-								Sel: &ast.Ident{
-									Name: "Error",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	file.Decls = append(file.Decls, &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{
-						&ast.Ident{
-							Name: "j",
-						},
-					},
-					Type: &ast.StarExpr{
-						X: &ast.Ident{
-							Name: "AdditionalElementsError",
-						},
-					},
-				},
-			},
-		},
-		Name: &ast.Ident{
-			Name: "Error",
-		},
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					&ast.Field{
-						Type: &ast.Ident{
-							Name: "string",
-						},
-					},
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.AssignStmt{
-					Lhs: []ast.Expr{
-						&ast.Ident{
-							Name: "m",
-						},
-					},
-					Tok: token.DEFINE,
-					Rhs: []ast.Expr{
-						&ast.BasicLit{
-							Kind:  token.STRING,
-							Value: "\"the following unexpected additional elements were found: \"",
-						},
-					},
-				},
-				&ast.RangeStmt{
-					Key: &ast.Ident{
-						Name: "s",
-					},
-					Value: &ast.Ident{
-						Name: "e",
-					},
-					Tok: token.DEFINE,
-					X: &ast.SelectorExpr{
-						X: &ast.Ident{
-							Name: "j",
-						},
-						Sel: &ast.Ident{
-							Name: "Elements",
-						},
-					},
-					Body: &ast.BlockStmt{
-						List: []ast.Stmt{
-							&ast.AssignStmt{
-								Lhs: []ast.Expr{
-									&ast.Ident{
-										Name: "m",
-									},
-								},
-								Tok: token.ADD_ASSIGN,
-								Rhs: []ast.Expr{
-									&ast.CallExpr{
-										Fun: &ast.SelectorExpr{
-											X: &ast.Ident{
-												Name: "fmt",
-											},
-											Sel: &ast.Ident{
-												Name: "Sprintf",
-											},
-										},
-										Args: []ast.Expr{
-											&ast.BasicLit{
-												Kind:  token.STRING,
-												Value: "\"[(%s) RawJsonString {\\\"%s\\\": %s}]\"",
-											},
-											&ast.Ident{
-												Name: "s",
-											},
-											&ast.Ident{
-												Name: "s",
-											},
-											&ast.Ident{
-												Name: "e",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-				&ast.AssignStmt{
-					Lhs: []ast.Expr{
-						&ast.Ident{
-							Name: "m",
-						},
-					},
-					Tok: token.ADD_ASSIGN,
-					Rhs: []ast.Expr{
-						&ast.BinaryExpr{
-							X: &ast.BasicLit{
-								Kind:  token.STRING,
-								Value: "\" whilst parsing \"",
-							},
-							Op: token.ADD,
-							Y: &ast.SelectorExpr{
-								X: &ast.Ident{
-									Name: "j",
-								},
-								Sel: &ast.Ident{
-									Name: "ParsedObj",
-								},
-							},
-						},
-					},
-				},
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.Ident{
-							Name: "m",
-						},
-					},
-				},
 			},
 		},
 	})

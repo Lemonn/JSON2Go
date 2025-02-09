@@ -73,14 +73,23 @@ func (g *Generator) Generate(file *ast.File) error {
 				fmt.Println(err)
 				return err
 			}
+
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.Ident:
 			fmt.Println("Ident")
-			//stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.Ident).Name)
+			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.SelectorExpr:
 			fmt.Println("SelectorExpr")
-			//stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.SelectorExpr).X.(*ast.Ident).Name+"."+(*node.Node).(*ast.SelectorExpr).Sel.Name)
+			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
 			AstUtils.AddMissingImports(file, imports)
 		default:
 			return errors.New(fmt.Sprintf("unkown type: %s", reflect.TypeOf(*node.Node).String()))
@@ -90,6 +99,7 @@ func (g *Generator) Generate(file *ast.File) error {
 			continue
 		}
 
+		//Add Marshall function to file
 		file.Decls = append(file.Decls, &ast.FuncDecl{
 			Recv: &ast.FieldList{
 				List: []*ast.Field{
@@ -132,6 +142,5 @@ func (g *Generator) Generate(file *ast.File) error {
 			Body: &ast.BlockStmt{List: stmts},
 		})
 	}
-	AstUtils.AddMissingImports(file, []string{"encoding/json"})
 	return nil
 }
