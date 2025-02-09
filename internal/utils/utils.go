@@ -25,3 +25,18 @@ func WalkExpressions(expr *ast.Expr) (*ast.Expr, error) {
 	}
 	return nil, errors.New(fmt.Sprintf("unknown expression: %s", reflect.TypeOf(*expr)))
 }
+
+func GeneratedNestedArray(levelOfArrays int, InnerExpr *ast.Expr, OuterExpr ast.Expr) (*ast.Expr, ast.Expr) {
+	for range levelOfArrays {
+		if InnerExpr != nil && reflect.TypeOf(*InnerExpr) == reflect.TypeOf(&ast.ArrayType{}) {
+			(*InnerExpr).(*ast.ArrayType).Elt = &ast.ArrayType{}
+			*InnerExpr = (*InnerExpr).(*ast.ArrayType).Elt
+		} else {
+			var k ast.Expr
+			k = &ast.ArrayType{}
+			InnerExpr = &k
+			OuterExpr = k
+		}
+	}
+	return InnerExpr, OuterExpr
+}

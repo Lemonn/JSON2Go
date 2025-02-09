@@ -1,6 +1,7 @@
 package fieldData
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -25,6 +26,8 @@ type Data struct {
 	ParseFunctions *ParseFunctions `json:"parseFunctions,omitempty"`
 	// BaseType The type before it was modified from a TypeDeterminationFunction
 	BaseType *string `json:"baseType,omitempty"`
+	// CurrentCustomType Set whenever a custom type is in use. For example is set to time.Time for the time type
+	CurrentCustomType *string `json:"currentCustomType,omitempty"`
 	// MixedTypes is set, whenever an array whit mixed types is encountered
 	MixedTypes bool `json:"mixedTypes,omitempty"`
 	// LastSeenTimestamp Unix timestamp. Is updated whenever a value is seen
@@ -33,6 +36,12 @@ type Data struct {
 	EmptyValuePresent bool `json:"emptyValuePresent,omitempty"`
 	// Contains the name, as found in the JSON-File
 	JsonFieldName *string `json:"jsonFieldName,omitempty"`
+	// NameOfActiveTypeAdjuster Name of the TypeAdjuster that replaced the type
+	NameOfActiveTypeAdjuster *string `json:"nameOfActiveTypeAdjuster,omitempty"`
+	// TypeAdjusterData Data stored by the currently in used TypeAdjuster. This is used to emmit the
+	// IncompatibleCustomType error, for example if a type such as time.Time stays the same but the underling
+	// time strings are incompatible
+	TypeAdjusterData json.RawMessage `json:"typeAdjusterData,omitempty"`
 }
 
 func (j *Data) Combine(j1 *Data) (*Data, error) {

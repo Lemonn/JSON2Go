@@ -7,6 +7,7 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"reflect"
+	"unicode"
 )
 
 type Generator struct {
@@ -34,17 +35,20 @@ func (g *Generator) Generate(file *ast.File) error {
 		}
 		return false
 	}, &completed)
+
 	for _, node := range foundNodes {
 		var stmts []ast.Stmt
 		var levelOfArrays int
 		var nested bool
 		var err error
 		var imports []string
+		var name string
 
 		var path string
 		for _, parent := range node.Parents {
 			if v, ok := (*parent).(*ast.TypeSpec); ok {
 				path += v.Name.Name
+				name = v.Name.Name
 			} else if _, ok := (*parent).(*ast.StructType); ok {
 				nested = true
 				//Ignore nested structs
@@ -64,8 +68,9 @@ func (g *Generator) Generate(file *ast.File) error {
 		switch (*node.Node).(type) {
 		case *ast.StructType:
 			fmt.Println("StructType")
-			stmts, imports, err = g.structGenerator((*node.Node).(*ast.StructType), path)
+			stmts, imports, err = g.structGenerator((*node.Node).(*ast.StructType), path, name)
 			if err != nil {
+				fmt.Println(err)
 				return err
 			}
 			AstUtils.AddMissingImports(file, imports)
@@ -80,47 +85,43 @@ func (g *Generator) Generate(file *ast.File) error {
 		default:
 			return errors.New(fmt.Sprintf("unkown type: %s", reflect.TypeOf(*node.Node).String()))
 		}
-		//TODO replace function
-		f1 := &ast.FuncDecl{
+
+		if stmts == nil || len(stmts) == 0 {
+			continue
+		}
+
+		file.Decls = append(file.Decls, &ast.FuncDecl{
 			Recv: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
-								Name: "R",
+							{
+								Name: string(unicode.ToLower([]rune(name)[0])),
 							},
 						},
 						Type: &ast.StarExpr{
 							X: &ast.Ident{
-								Name: "RRR",
+								Name: name,
 							},
 						},
 					},
 				},
 			},
 			Name: &ast.Ident{
-				Name: "UnmarshalJSON",
+				Name: "MarshalJSON",
 			},
 			Type: &ast.FuncType{
-				Params: &ast.FieldList{
+				Params: &ast.FieldList{},
+				Results: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{
-							Names: []*ast.Ident{
-								&ast.Ident{
-									Name: "bytes",
-								},
-							},
+						{
 							Type: &ast.ArrayType{
 								Elt: &ast.Ident{
 									Name: "byte",
 								},
 							},
 						},
-					},
-				},
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						&ast.Field{
+						{
 							Type: &ast.Ident{
 								Name: "error",
 							},
@@ -129,8 +130,7 @@ func (g *Generator) Generate(file *ast.File) error {
 				},
 			},
 			Body: &ast.BlockStmt{List: stmts},
-		}
-		file.Decls = append(file.Decls, f1)
+		})
 	}
 	AstUtils.AddMissingImports(file, []string{"encoding/json"})
 	return nil

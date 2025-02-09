@@ -2,22 +2,68 @@ package marshaller
 
 import (
 	"errors"
-	"github.com/Lemonn/AstUtils"
+	"fmt"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/structGenerator"
 	"go/ast"
 	"go/token"
+	"reflect"
+	"unicode"
 )
 
-func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stmt, []string, error) {
-	var structFields []*ast.Field
+func (g *Generator) structGenerator(str *ast.StructType, path string, name string) ([]ast.Stmt, []string, error) {
+	var localStruct *ast.DeclStmt
+	var err error
 	var stmts []ast.Stmt
 	required := false
+
+	localStruct, err = structTypeFromFields(str.Fields.List, path, g.data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	stmts = append(stmts, localStruct)
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "lt",
+						},
+					},
+					Type: &ast.Ident{
+						Name: "localType",
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "err",
+						},
+					},
+					Type: &ast.Ident{
+						Name: "error",
+					},
+				},
+			},
+		},
+	})
+
 	for _, field := range str.Fields.List {
 
 		var fData *fieldData.Data
 		if v, ok := structGenerator.Tags[path+"."+field.Names[0].Name]; !ok {
-			return nil, nil, errors.New("struct field not found")
+			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
 		} else if v.JsonFieldName == nil {
 			continue
 		} else {
@@ -26,22 +72,11 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 
 		if fData.ParseFunctions != nil && fData.BaseType != nil {
 			required = true
-			structFields = append(structFields, &ast.Field{
-				Names: []*ast.Ident{
-					&ast.Ident{
-						Name: field.Names[0].Name,
-					},
-				},
-				Type: &ast.Ident{
-					Name: *fData.BaseType,
-				},
-				Tag: AstUtils.RemoveTag("json2go", field.Tag),
-			})
 			stmts = append(stmts, &ast.AssignStmt{
 				Lhs: []ast.Expr{
 					&ast.SelectorExpr{
 						X: &ast.Ident{
-							Name: "v",
+							Name: "lt",
 						},
 						Sel: &ast.Ident{
 							Name: field.Names[0].Name,
@@ -60,7 +95,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 						Args: []ast.Expr{
 							&ast.SelectorExpr{
 								X: &ast.Ident{
-									Name: "s",
+									Name: string(unicode.ToLower([]rune(name)[0])),
 								},
 								Sel: &ast.Ident{
 									Name: field.Names[0].Name,
@@ -96,18 +131,11 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 				},
 			})
 		} else {
-			structFields = append(structFields, &ast.Field{
-				Doc:     field.Doc,
-				Names:   field.Names,
-				Type:    field.Type,
-				Tag:     AstUtils.RemoveTag("json2go", field.Tag),
-				Comment: field.Comment,
-			})
 			stmts = append(stmts, &ast.AssignStmt{
 				Lhs: []ast.Expr{
 					&ast.SelectorExpr{
 						X: &ast.Ident{
-							Name: "v",
+							Name: "lt",
 						},
 						Sel: &ast.Ident{
 							Name: field.Names[0].Name,
@@ -118,7 +146,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 				Rhs: []ast.Expr{
 					&ast.SelectorExpr{
 						X: &ast.Ident{
-							Name: "s",
+							Name: string(unicode.ToLower([]rune(name)[0])),
 						},
 						Sel: &ast.Ident{
 							Name: field.Names[0].Name,
@@ -129,8 +157,11 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 		}
 	}
 	if len(stmts) == 0 || !required {
-		return stmts, []string{}, nil
+		return []ast.Stmt{}, []string{}, nil
 	}
+
+	stmts = append(stmts)
+
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.CallExpr{
@@ -144,11 +175,125 @@ func (g *Generator) structGenerator(str *ast.StructType, path string) ([]ast.Stm
 				},
 				Args: []ast.Expr{
 					&ast.Ident{
-						Name: "v",
+						Name: "lt",
 					},
 				},
 			},
 		},
 	})
 	return stmts, []string{"encoding/json"}, nil
+}
+
+func structTypeFromFields(fields []*ast.Field, path string, tags map[string]*fieldData.Data) (*ast.DeclStmt, error) {
+	var localFields []*ast.Field
+	for _, field := range fields {
+
+		if v, ok := tags[path+"."+field.Names[0].Name]; ok && v.BaseType != nil {
+			var levelOfArrays int
+			currentType := field.Type
+			var finished bool
+			for !finished {
+				switch currentType.(type) {
+				case *ast.StarExpr:
+					if _, ok := currentType.(*ast.StarExpr).X.(*ast.Ident); !ok {
+						return nil, errors.New(fmt.Sprintf("only *ast.StarExpr expression whit an nestet"+
+							" *ast.Ident are supported, this one contains an: %s",
+							reflect.TypeOf(currentType.(*ast.StarExpr).X)))
+					}
+					currentType = currentType.(*ast.StarExpr).X
+					finished = true
+				case *ast.Ident:
+					finished = true
+				case *ast.ArrayType:
+					currentType = currentType.(*ast.ArrayType).Elt
+					levelOfArrays++
+				case *ast.SelectorExpr:
+					finished = true
+				default:
+					return nil, errors.New(fmt.Sprintf("only StarExpr, Ident, SelectorExpr or ArrayType are"+
+						" supported, this expression is of type: %s. Current path: %s",
+						reflect.TypeOf(currentType), path+"."+field.Names[0].Name))
+				}
+			}
+
+			//TODO if we got an *ast.StarExpr we currently replace it whit an *ast.Ident, keep it an *ast.StarExpr
+			var oe ast.Expr
+			var ie *ast.Expr
+			if levelOfArrays > 0 {
+				utils.GeneratedNestedArray(levelOfArrays, ie, oe)
+				*ie = &ast.Ident{Name: *v.BaseType}
+			} else {
+				oe = &ast.Ident{Name: *v.BaseType}
+			}
+
+			localFields = append(localFields,
+				&ast.Field{
+					Doc:     field.Doc,
+					Names:   field.Names,
+					Type:    oe,
+					Tag:     field.Tag,
+					Comment: field.Comment,
+				})
+
+		} else {
+			localFields = append(localFields, field)
+		}
+
+	}
+
+	return &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: &ast.Ident{
+						Name: "localType",
+					},
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{
+							List: localFields,
+						},
+					},
+				},
+			},
+		},
+	}, nil
+}
+
+var _ = &ast.File{
+	Package: 1,
+	Name: &ast.Ident{
+		Name: "main",
+	},
+	Decls: []ast.Decl{
+		&ast.FuncDecl{
+			Name: &ast.Ident{
+				Name: "t",
+			},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.DeclStmt{
+						Decl: &ast.GenDecl{
+							Tok: token.VAR,
+							Specs: []ast.Spec{
+								&ast.ValueSpec{
+									Names: []*ast.Ident{
+										&ast.Ident{
+											Name: "lt",
+										},
+									},
+									Type: &ast.Ident{
+										Name: "localType",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
 }

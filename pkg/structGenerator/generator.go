@@ -2,7 +2,6 @@ package structGenerator
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
@@ -112,9 +111,6 @@ func GenerateCodeIntoDecl(jsonData []byte, decls []ast.Decl, structName string) 
 			},
 		})
 	}
-	for s, tag := range Tags {
-		fmt.Println(s, tag.JsonFieldName)
-	}
 
 	return decls, Tags, nil
 }
@@ -184,10 +180,7 @@ func processStruct(fieldName *string, structData map[string]interface{}, fields 
 				},
 			},
 			Type: &ast.StructType{Fields: &ast.FieldList{List: localFields}},
-			Tag: &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: "`json:\"" + *fieldName + ",omitempty\" `",
-			},
+			Tag:  nil,
 		}
 		*fields = append(*fields, structField)
 	} else {
@@ -252,16 +245,7 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 					return []*ast.Ident{&ast.Ident{Name: strcase.ToCamel(*fieldName)}}
 				}(),
 				Type: &ast.ArrayType{Elt: &ast.StructType{Fields: fieldList}},
-				Tag: func() *ast.BasicLit {
-					if fieldName == nil {
-						return nil
-					}
-					return &ast.BasicLit{
-						Kind: token.STRING,
-						//TODO add json2go last seen tag
-						Value: "`json:\"" + *fieldName + ",omitempty\"`",
-					}
-				}(),
+				Tag:  nil,
 			})
 			Tags[path].JsonFieldName = fieldName
 		case interface{}:
@@ -297,6 +281,10 @@ func processSlice(fieldName *string, sliceData []interface{}, path string) (*ast
 				return []*ast.Ident{{Name: strcase.ToCamel(*fieldName)}}
 			}(),
 		})
+		if fieldName != nil {
+			Tags[path+"."+strcase.ToCamel(*fieldName)] = &fieldData.Data{JsonFieldName: fieldName}
+		}
+
 	}
 	f := expressionList[0]
 	for i := 1; i < len(expressionList); i++ {
@@ -565,8 +553,8 @@ func resetToBaseType(expr *ast.Expr, json2go *fieldData.Data) {
 	}
 }
 
-func RenamePaths() {
-	for s, tag := range Tags {
+func RenamePaths(tags map[string]*fieldData.Data) map[string]*fieldData.Data {
+	for s, tag := range tags {
 		pathElements := strings.Split(s, ".")
 		if len(pathElements) > 1 && s != pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1] {
 			Tags[pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1]] = tag
@@ -574,6 +562,7 @@ func RenamePaths() {
 		}
 
 	}
+	return tags
 }
 
 /*

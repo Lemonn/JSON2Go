@@ -1,5 +1,19 @@
 # JSON2Go
 
+<!-- TOC -->
+* [JSON2Go](#json2go)
+  * [Overview](#overview)
+  * [Tag Documentation](#tag-documentation)
+  * [Type Adjustment](#type-adjustment)
+    * [Build-in TypeCheckers](#build-in-typecheckers)
+  * [JSON-Marshaller generation](#json-marshaller-generation)
+    * [UnMarshal](#unmarshal)
+      * [Example](#example)
+    * [Marshal](#marshal)
+  * [Combine files](#combine-files)
+  * [Example](#example-1)
+<!-- TOC -->
+
 ## Overview
 
 Json2Go could generate Golang structs from any given valid JSON document. But this is something that could be done by many tools out there. What sets Json2Go apart is the fact that it has been developed with undocumented or poorly documented JSON-APIs in mind.
@@ -85,11 +99,11 @@ to convert it to ast-code.
 ### Build-in TypeCheckers
 
 
-| Name            | Type      | Description                                                                                                                                                                                                                                                       |
-|-----------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| UUIDTypeChecker | uuid.UUID | Checks if values could be represented as `uuid.UUID` using `github.com/google/uuid` as a dependency                                                                                                                                                               |
-| TimeTypeChecker | time.Time | Checks if values can be represented as `time.Time` uses `github.com/araddon/dateparse` to check for valid time types.                                                                                                                                             |
-| IntTypeChecker  | int       | Checks if the given values can be represented as integers. Be careful with APIs that use the dot notation, to signal a float response, despite the values being valid integer ones. The information is lost during the process. Only the pure value plays a role. |
+| Name                    | Type      | Settings                                                        | Description                                                                                                                                                                                                                                                       |
+|-------------------------|-----------|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| json2go.UUIDTypeChecker | uuid.UUID |                                                                 | Checks if values could be represented as `uuid.UUID` using `github.com/google/uuid` as a dependency                                                                                                                                                               |
+| json2go.TimeTypeChecker | time.Time | `IgnoreYearOnlyStrings` Set to true, to ignore year only values | Checks if values can be represented as `time.Time` uses `github.com/araddon/dateparse` to check for valid time types.                                                                                                                                             |
+| json2go.IntTypeChecker  | int       |                                                                 | Checks if the given values can be represented as integers. Be careful with APIs that use the dot notation, to signal a float response, despite the values being valid integer ones. The information is lost during the process. Only the pure value plays a role. |
 
 The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here: 
 [typeDeterminers.go](https://github.com/Lemonn/JSON2Go/blob/ce85a6cc8abf255c8c8733ddbcb10d3dc40fa7a1/typeDeterminers.go#L15)
@@ -184,5 +198,61 @@ type RRR struct {
 	Origin	string	`json:"Origin" json2go:"eyJzZWVuVmFsdWVzIjpbIlVTIl19"`
 	Name	string	`json:"Name" json2go:"eyJzZWVuVmFsdWVzIjpbIk5pY2siLCJQZXRlciJdfQ==" `
 	Age	string	`json:"Age" json2go:"eyJzZWVuVmFsdWVzIjpbIjk5IiwiMjIiXX0=" `
+}
+```
+
+## Example
+
+The follwing JSON-Document is 
+
+```json
+{
+  "ListOfUUIDs": [
+    "c46f9b5c-13b9-4db8-9272-fc549b26e90b",
+    "9e4f11c2-d059-4172-a6b8-1fb3dcb77916"
+  ],
+  "DateString": "2025-02-20T17:25:00",
+  "ArrayWhitStructs": [
+    {
+      "Name": "Anne",
+      "Gender": "f",
+      "FavoriteFood": "ButterChicken"
+    },
+    {
+      "Name": "Carl",
+      "Profession": "carpenter"
+    },
+    {
+      "Name": "Carla",
+      "LastName": "Miller"
+    }
+  ]
+}
+```
+
+
+```golang
+
+```
+
+```golang
+package main
+
+import (
+	"github.com/google/uuid"
+	"time"
+)
+
+type Test struct {
+	ListOfUuids		uuid.UUID		`json2go:"eyJzZWVuVmFsdWVzIjpbImM0NmY5YjVjLTEzYjktNGRiOC05MjcyLWZjNTQ5YjI2ZTkwYiIsIjllNGYxMWMyLWQwNTktNDE3Mi1hNmI4LTFmYjNkY2I3NzkxNiJdLCJwYXJzZUZ1bmN0aW9ucyI6eyJmcm9tVHlwZVBhcnNlRnVuY3Rpb24iOiJmcm9tTGlzdE9mVXVpZHNSUlIiLCJ0b1R5cGVQYXJzZUZ1bmN0aW9uIjoidG9MaXN0T2ZVdWlkc1JSUiJ9LCJiYXNlVHlwZSI6InN0cmluZyIsImxhc3RTZWVuVGltZXN0YW1wIjoxNzM4NTc3Mzg4fQ==" json:"ListOfUUIDs" `
+	DateString		time.Time		`json2go:"eyJzZWVuVmFsdWVzIjpbIjIwMjUtMDItMjBUMTc6MjU6MDAiXSwicGFyc2VGdW5jdGlvbnMiOnsiZnJvbVR5cGVQYXJzZUZ1bmN0aW9uIjoiZnJvbURhdGVTdHJpbmdSUlIiLCJ0b1R5cGVQYXJzZUZ1bmN0aW9uIjoidG9EYXRlU3RyaW5nUlJSIn0sImJhc2VUeXBlIjoic3RyaW5nIiwibGFzdFNlZW5UaW1lc3RhbXAiOjE3Mzg1NzczODh9" json:"DateString" `
+	ArrayWhitStructs	[]*ArrayWhitStructs	`json:"ArrayWhitStructs,omitempty"`
+}
+type ArrayWhitStructs struct {
+	Name		string	`json2go:"eyJzZWVuVmFsdWVzIjpbIkFubmUiLCJDYXJsIiwiQ2FybGEiXSwibGFzdFNlZW5UaW1lc3RhbXAiOjE3Mzg1NzczODh9" json:"Name" `
+	Gender		string	`json2go:"eyJzZWVuVmFsdWVzIjpbImYiXSwibGFzdFNlZW5UaW1lc3RhbXAiOjE3Mzg1NzczODh9"  json:"Gender"`
+	FavoriteFood	string	`json2go:"eyJzZWVuVmFsdWVzIjpbIkJ1dHRlckNoaWNrZW4iXSwibGFzdFNlZW5UaW1lc3RhbXAiOjE3Mzg1NzczODh9"  json:"FavoriteFood"`
+	Profession	string	`json2go:"eyJzZWVuVmFsdWVzIjpbImNhcnBlbnRlciJdLCJsYXN0U2VlblRpbWVzdGFtcCI6MTczODU3NzM4OH0="  json:"Profession"`
+	LastName	string	`json2go:"eyJzZWVuVmFsdWVzIjpbIk1pbGxlciJdLCJsYXN0U2VlblRpbWVzdGFtcCI6MTczODU3NzM4OH0="  json:"LastName"`
 }
 ```
