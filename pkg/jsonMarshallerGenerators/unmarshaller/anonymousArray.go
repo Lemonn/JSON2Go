@@ -1,7 +1,6 @@
 package unmarshaller
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"reflect"
@@ -131,7 +130,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 					func() ast.Expr {
 						var oe ast.Expr
 						var ie *ast.Expr
-						fmt.Println(fmt.Sprintf("S %d", i))
 						li := 0
 						for range i - 1 {
 							if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
@@ -174,7 +172,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 							func() ast.Expr {
 								var oe ast.Expr
 								var ie *ast.Expr
-								fmt.Println(fmt.Sprintf("S %d", i))
 								li := 0
 								for range i - 1 {
 									if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
@@ -227,7 +224,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 			(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.RangeStmt{
 				Key: &ast.Ident{
 					Name: func() string {
-						fmt.Println(levelOfArrays - 1)
 						if i == levelOfArrays-1 {
 							return "_"
 						}

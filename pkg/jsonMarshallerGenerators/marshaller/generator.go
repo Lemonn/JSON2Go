@@ -67,27 +67,21 @@ func (g *Generator) Generate(file *ast.File) error {
 
 		switch (*node.Node).(type) {
 		case *ast.StructType:
-			fmt.Println("StructType")
 			stmts, imports, err = g.structGenerator((*node.Node).(*ast.StructType), path, name)
 			if err != nil {
-				fmt.Println(err)
 				return err
 			}
 
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.Ident:
-			fmt.Println("Ident")
 			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
 			if err != nil {
-				fmt.Println(err)
 				return err
 			}
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.SelectorExpr:
-			fmt.Println("SelectorExpr")
 			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
 			if err != nil {
-				fmt.Println(err)
 				return err
 			}
 			AstUtils.AddMissingImports(file, imports)

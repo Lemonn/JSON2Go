@@ -1,7 +1,6 @@
 package marshaller
 
 import (
-	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
@@ -14,7 +13,7 @@ import (
 func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
 	var fData *fieldData.FieldData
-	if v, ok := g.data[path]; !ok || v.BaseType == nil || levelOfArrays == 0 {
+	if v, ok := g.data[path]; !ok || v.BaseType == nil || levelOfArrays <= 0 {
 		return nil, nil, nil
 	} else {
 		fData = v
@@ -25,7 +24,7 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) 
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{
-						&ast.Ident{
+						{
 							Name: "lt",
 						},
 					},
@@ -81,7 +80,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) 
 			(*is).(*ast.RangeStmt).Body.List = append((*is).(*ast.RangeStmt).Body.List, &ast.RangeStmt{
 				Key: &ast.Ident{
 					Name: func() string {
-						fmt.Println(levelOfArrays - 1)
 						if i == levelOfArrays-1 {
 							return "_"
 						}

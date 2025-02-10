@@ -9,16 +9,22 @@ import (
 type TimeTypeChecker struct {
 	// IgnoreYearOnlyStrings Set to ignore strings that consist only of a year such as 3294. Most often, they're
 	// integers not years!
-	IgnoreYearOnlyStrings bool
-	state                 *TimeTypeCheckerState
+	ignoreYearOnlyStrings bool
+	state                 *timeTypeCheckerState
 }
 
-type TimeTypeCheckerState struct {
+func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
+	return &TimeTypeChecker{
+		ignoreYearOnlyStrings: ignoreYearOnlyStrings,
+	}
+}
+
+type timeTypeCheckerState struct {
 	LayoutString string `json:"layoutString,omitempty"`
 }
 
 func (t *TimeTypeChecker) SetState(state json.RawMessage) error {
-	var s TimeTypeCheckerState
+	var s timeTypeCheckerState
 	if state != nil {
 		err := json.Unmarshal(state, &s)
 		if err != nil {
@@ -52,7 +58,7 @@ func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool 
 	var err error
 	for value := range seenValues {
 		t.state.LayoutString, err = dateparse.ParseFormat(value)
-		if t.IgnoreYearOnlyStrings && t.state.LayoutString == "2006" {
+		if t.ignoreYearOnlyStrings && t.state.LayoutString == "2006" {
 			return false
 		}
 		if err != nil {

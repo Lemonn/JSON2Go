@@ -71,3 +71,39 @@ func GetFieldIdentFromPath(path string) []*ast.Ident {
 	pathElements := strings.Split(path, ".")
 	return []*ast.Ident{{Name: strcase.ToCamel(pathElements[len(pathElements)-1])}}
 }
+
+func GetInputType(functionScaffold *ast.FuncDecl) (string, error) {
+	for _, expr := range functionScaffold.Type.Params.List {
+		n, err := WalkExpressions(&expr.Type)
+		if err != nil {
+			return "", err
+		}
+		switch e := (*n).(type) {
+		case *ast.SelectorExpr:
+			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
+		case *ast.Ident:
+			return e.Name, nil
+		case *ast.InterfaceType:
+			return "interface{}", nil
+		}
+	}
+	return "", errors.New("no valid input type")
+}
+
+func GetReturnType(functionScaffold *ast.FuncDecl) (string, error) {
+	for _, expr := range functionScaffold.Type.Results.List {
+		n, err := WalkExpressions(&expr.Type)
+		if err != nil {
+			return "", err
+		}
+		switch e := (*n).(type) {
+		case *ast.SelectorExpr:
+			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
+		case *ast.Ident:
+			return e.Name, nil
+		case *ast.InterfaceType:
+			return "interface{}", nil
+		}
+	}
+	return "", errors.New("no valid result type")
+}

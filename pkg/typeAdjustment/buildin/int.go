@@ -2,14 +2,15 @@ package buildin
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"go/ast"
 	"go/token"
 	"strconv"
 )
 
-type IntTypeChecker struct{}
+type IntTypeChecker struct {
+	requiredImports []string
+}
 
 func (i *IntTypeChecker) SetState(state json.RawMessage) error {
 	return nil
@@ -34,7 +35,7 @@ func (i *IntTypeChecker) GetType() ast.Expr {
 }
 
 func (i *IntTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
-	inputType, err := getInputType(functionScaffold)
+	inputType, err := utils.GetInputType(functionScaffold)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +135,7 @@ func (i *IntTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl
 }
 
 func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
-	returnType, err := getReturnType(functionScaffold)
+	returnType, err := utils.GetReturnType(functionScaffold)
 	if err != nil {
 		return nil, err
 	}
@@ -200,52 +201,17 @@ func (i *IntTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) 
 				},
 			},
 		}
+		i.requiredImports = append(i.requiredImports, "strconv")
 	}
 	return functionScaffold, nil
 }
 
 func (i *IntTypeChecker) GetRequiredImports() []string {
-	return []string{"strconv"}
+	return i.requiredImports
 }
 
 func (i *IntTypeChecker) SetFile(_ *ast.File) {}
 
 func (i *IntTypeChecker) GetName() string {
 	return "json2go.IntTypeChecker"
-}
-
-func getInputType(functionScaffold *ast.FuncDecl) (string, error) {
-	for _, expr := range functionScaffold.Type.Params.List {
-		n, err := utils.WalkExpressions(&expr.Type)
-		if err != nil {
-			return "", err
-		}
-		switch e := (*n).(type) {
-		case *ast.SelectorExpr:
-			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
-		case *ast.Ident:
-			return e.Name, nil
-		case *ast.InterfaceType:
-			return "interface{}", nil
-		}
-	}
-	return "", errors.New("no valid input type")
-}
-
-func getReturnType(functionScaffold *ast.FuncDecl) (string, error) {
-	for _, expr := range functionScaffold.Type.Results.List {
-		n, err := utils.WalkExpressions(&expr.Type)
-		if err != nil {
-			return "", err
-		}
-		switch e := (*n).(type) {
-		case *ast.SelectorExpr:
-			return e.Sel.Name + "." + e.X.(*ast.Ident).Name, nil
-		case *ast.Ident:
-			return e.Name, nil
-		case *ast.InterfaceType:
-			return "interface{}", nil
-		}
-	}
-	return "", errors.New("no valid result type")
 }

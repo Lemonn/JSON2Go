@@ -61,13 +61,11 @@ func (g *Generator) Generate(file *ast.File) error {
 			}
 		}
 		if _, ok := g.data[path]; !ok || nested {
-			fmt.Println(path + "dsfasdfsdaf")
 			continue
 		}
 
 		switch (*node.Node).(type) {
 		case *ast.StructType:
-			fmt.Println("StructType")
 			stmts, imports, err = g.structGenerator((*node.Node).(*ast.StructType), path, path)
 			if err != nil {
 				return err
@@ -317,11 +315,9 @@ func (g *Generator) Generate(file *ast.File) error {
 
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.Ident:
-			fmt.Println("Ident")
 			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.Ident).Name, path)
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.SelectorExpr:
-			fmt.Println("SelectorExpr")
 			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.SelectorExpr).X.(*ast.Ident).Name+"."+(*node.Node).(*ast.SelectorExpr).Sel.Name, path)
 			AstUtils.AddMissingImports(file, imports)
 		default:
