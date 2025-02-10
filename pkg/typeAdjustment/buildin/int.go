@@ -11,14 +11,12 @@ import (
 
 type IntTypeChecker struct{}
 
-func (i *IntTypeChecker) SetState(state *json.RawMessage) error {
-	//TODO implement me
-	panic("implement me")
+func (i *IntTypeChecker) SetState(state json.RawMessage) error {
+	return nil
 }
 
-func (i *IntTypeChecker) GetState() (*json.RawMessage, error) {
-	//TODO implement me
-	panic("implement me")
+func (i *IntTypeChecker) GetState() (json.RawMessage, error) {
+	return nil, nil
 }
 
 func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {

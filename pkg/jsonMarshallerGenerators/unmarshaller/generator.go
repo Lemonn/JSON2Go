@@ -87,9 +87,9 @@ func (g *Generator) Generate(file *ast.File) error {
 							Type: &ast.StructType{
 								Fields: &ast.FieldList{
 									List: []*ast.Field{
-										&ast.Field{
+										{
 											Names: []*ast.Ident{
-												&ast.Ident{
+												{
 													Name: "ParsedObj",
 												},
 											},
@@ -97,9 +97,9 @@ func (g *Generator) Generate(file *ast.File) error {
 												Name: "string",
 											},
 										},
-										&ast.Field{
+										{
 											Names: []*ast.Ident{
-												&ast.Ident{
+												{
 													Name: "Elements",
 												},
 											},
@@ -126,9 +126,9 @@ func (g *Generator) Generate(file *ast.File) error {
 				file.Decls = append(file.Decls, &ast.FuncDecl{
 					Recv: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Names: []*ast.Ident{
-									&ast.Ident{
+									{
 										Name: "j",
 									},
 								},
@@ -147,7 +147,7 @@ func (g *Generator) Generate(file *ast.File) error {
 						Params: &ast.FieldList{},
 						Results: &ast.FieldList{
 							List: []*ast.Field{
-								&ast.Field{
+								{
 									Type: &ast.Ident{
 										Name: "string",
 									},
@@ -177,9 +177,9 @@ func (g *Generator) Generate(file *ast.File) error {
 				file.Decls = append(file.Decls, &ast.FuncDecl{
 					Recv: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Names: []*ast.Ident{
-									&ast.Ident{
+									{
 										Name: "j",
 									},
 								},
@@ -198,7 +198,7 @@ func (g *Generator) Generate(file *ast.File) error {
 						Params: &ast.FieldList{},
 						Results: &ast.FieldList{
 							List: []*ast.Field{
-								&ast.Field{
+								{
 									Type: &ast.Ident{
 										Name: "string",
 									},
@@ -333,9 +333,9 @@ func (g *Generator) Generate(file *ast.File) error {
 		f1 := &ast.FuncDecl{
 			Recv: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: string(unicode.ToLower([]rune(path)[0])),
 							},
 						},
@@ -353,9 +353,9 @@ func (g *Generator) Generate(file *ast.File) error {
 			Type: &ast.FuncType{
 				Params: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{
+						{
 							Names: []*ast.Ident{
-								&ast.Ident{
+								{
 									Name: "bytes",
 								},
 							},
@@ -369,7 +369,7 @@ func (g *Generator) Generate(file *ast.File) error {
 				},
 				Results: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{
+						{
 							Type: &ast.Ident{
 								Name: "error",
 							},

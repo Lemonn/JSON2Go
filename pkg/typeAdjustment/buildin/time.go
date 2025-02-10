@@ -10,17 +10,31 @@ type TimeTypeChecker struct {
 	// IgnoreYearOnlyStrings Set to ignore strings that consist only of a year such as 3294. Most often, they're
 	// integers not years!
 	IgnoreYearOnlyStrings bool
-	layoutString          string
+	state                 *TimeTypeCheckerState
 }
 
-func (t *TimeTypeChecker) SetState(state *json.RawMessage) error {
-	//TODO implement me
-	panic("implement me")
+type TimeTypeCheckerState struct {
+	LayoutString string `json:"layoutString,omitempty"`
 }
 
-func (t *TimeTypeChecker) GetState() (*json.RawMessage, error) {
-	//TODO implement me
-	panic("implement me")
+func (t *TimeTypeChecker) SetState(state json.RawMessage) error {
+	var s TimeTypeCheckerState
+	if state != nil {
+		err := json.Unmarshal(state, &s)
+		if err != nil {
+			return err
+		}
+	}
+	t.state = &s
+	return nil
+}
+
+func (t *TimeTypeChecker) GetState() (json.RawMessage, error) {
+	b, err := json.Marshal(t.state)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 func (t *TimeTypeChecker) GetType() ast.Expr {
@@ -37,8 +51,8 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
 	var err error
 	for value := range seenValues {
-		t.layoutString, err = dateparse.ParseFormat(value)
-		if t.IgnoreYearOnlyStrings && t.layoutString == "2006" {
+		t.state.LayoutString, err = dateparse.ParseFormat(value)
+		if t.IgnoreYearOnlyStrings && t.state.LayoutString == "2006" {
 			return false
 		}
 		if err != nil {
@@ -64,7 +78,7 @@ func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDec
 						},
 						Args: []ast.Expr{
 							&ast.Ident{
-								Name: "\"" + t.layoutString + "\"",
+								Name: "\"" + t.state.LayoutString + "\"",
 							},
 							&ast.Ident{
 								Name: "baseValue",
@@ -94,7 +108,7 @@ func (t *TimeTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 						},
 						Args: []ast.Expr{
 							&ast.Ident{
-								Name: "\"" + t.layoutString + "\"",
+								Name: "\"" + t.state.LayoutString + "\"",
 							},
 						},
 					},

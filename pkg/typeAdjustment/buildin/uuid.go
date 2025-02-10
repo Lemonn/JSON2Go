@@ -8,14 +8,12 @@ import (
 
 type UUIDTypeChecker struct{}
 
-func (u *UUIDTypeChecker) SetState(state *json.RawMessage) error {
-	//TODO implement me
-	panic("implement me")
+func (u *UUIDTypeChecker) SetState(state json.RawMessage) error {
+	return nil
 }
 
-func (u *UUIDTypeChecker) GetState() (*json.RawMessage, error) {
-	//TODO implement me
-	panic("implement me")
+func (u *UUIDTypeChecker) GetState() (json.RawMessage, error) {
+	return nil, nil
 }
 
 func (u *UUIDTypeChecker) GetType() ast.Expr {

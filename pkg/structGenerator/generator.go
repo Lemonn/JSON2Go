@@ -5,6 +5,9 @@ import (
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
+	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
+	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/token"
@@ -27,10 +30,11 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 	}
 }
 
-func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string) (map[string]*fieldData.FieldData, error) {
+func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction, generateJSONMarshaller bool) (map[string]*fieldData.FieldData, error) {
 	s.file = file
 	var JsonData interface{}
-	err := json.Unmarshal(jsonData, &JsonData)
+	var err error
+	err = json.Unmarshal(jsonData, &JsonData)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +52,29 @@ func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, 
 	AstUtils.UnnestStruct(nil, file)
 	s.renamePaths()
 	s.attachJsonTags()
+
+	if typeAdjusters != nil && len(typeAdjusters) > 0 {
+		ta := typeAdjustment.NewTypeAdjuster(s.data)
+		err = ta.AdjustTypes(file, typeAdjusters, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if generateJSONMarshaller {
+		marshallGen := marshaller.NewGenerator(s.data)
+		err = marshallGen.Generate(s.file)
+		if err != nil {
+			return nil, err
+		}
+		unmarshallGen := unmarshaller.NewGenerator(s.data)
+		err = unmarshallGen.Generate(s.file)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
 	return s.data, nil
 }
 

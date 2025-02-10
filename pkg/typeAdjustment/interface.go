@@ -13,6 +13,6 @@ type TypeDeterminationFunction interface {
 	GetRequiredImports() []string
 	SetFile(file *ast.File)
 	GetName() string
-	SetState(state *json.RawMessage) error
-	GetState() (*json.RawMessage, error)
+	SetState(state json.RawMessage) error
+	GetState() (json.RawMessage, error)
 }

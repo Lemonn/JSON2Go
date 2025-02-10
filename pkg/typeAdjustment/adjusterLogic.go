@@ -117,6 +117,10 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 			}
 		}
 		checker.SetFile(file)
+		err = checker.SetState(json2GoTag.TypeAdjusterData)
+		if err != nil {
+			return nil, err
+		}
 		if checker.CouldTypeBeApplied(json2GoTag.SeenValues) {
 			//Set FieldData
 			json2GoTag.ParseFunctions = &fieldData.ParseFunctions{
@@ -209,6 +213,10 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 			file.Decls = append(file.Decls, toTypeFunction)
 			*exp = checker.GetType()
 			json2GoTag.BaseType = &originalType
+			json2GoTag.TypeAdjusterData, err = checker.GetState()
+			if err != nil {
+				return nil, err
+			}
 			requiredImports = append(requiredImports, checker.GetRequiredImports()...)
 			break
 		} else {
