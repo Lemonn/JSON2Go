@@ -25,8 +25,9 @@ func (s *StructGenerator) combineStructFields(oldElement, newElement *ast.Struct
 		fields[newField.Names[0].Name] = append(fields[newField.Names[0].Name], newField)
 	}
 
-	for _, exprs := range fields {
+	for fieldName, exprs := range fields {
 		if len(exprs) == 1 {
+			s.data[path+"."+fieldName].Omitempty = true
 			combinedFields = append(combinedFields, exprs[0])
 			continue
 		}
@@ -48,8 +49,7 @@ func (s *StructGenerator) combineStructFields(oldElement, newElement *ast.Struct
 // TODO set conflicting field json2go tag value
 func (s *StructGenerator) combineFields(expr0, expr1 ast.Expr, path string) (ast.Expr, error) {
 	//Get Tags of both fields
-	json2go0 := s.data[path]
-	json2go1 := s.data[path]
+	fData := s.data[path]
 
 	//Traverse as long as both fields are of type *ast.Array
 	var level int
@@ -95,7 +95,7 @@ func (s *StructGenerator) combineFields(expr0, expr1 ast.Expr, path string) (ast
 		}
 		return finalExpr, nil
 	} else if _, ok := expr0.(*ast.InterfaceType); ok {
-		if json2go0 != nil && json2go0.MixedTypes {
+		if fData != nil && fData.MixedTypes {
 			finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}
@@ -110,7 +110,7 @@ func (s *StructGenerator) combineFields(expr0, expr1 ast.Expr, path string) (ast
 		}
 
 	} else if _, ok := expr1.(*ast.InterfaceType); ok {
-		if json2go1 != nil && json2go1.MixedTypes {
+		if fData != nil && fData.MixedTypes {
 			finalExpr = &ast.InterfaceType{Methods: &ast.FieldList{}}
 			for range level {
 				finalExpr = &ast.ArrayType{Elt: finalExpr}

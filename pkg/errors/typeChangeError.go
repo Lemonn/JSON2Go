@@ -8,6 +8,7 @@ type TypeChangeError struct {
 	// InterfaceTypeReplacement is set, whenever a previously unknown datatype becomes a known one
 	InterfaceTypeReplacement bool
 	Err                      error
+	Timestamp                int64
 }
 
 func (t TypeChangeError) Error() string {

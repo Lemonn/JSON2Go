@@ -17,8 +17,9 @@ import (
 )
 
 type StructGenerator struct {
-	data map[string]*fieldData.FieldData
-	file *ast.File
+	data      map[string]*fieldData.FieldData
+	file      *ast.File
+	startTime time.Time
 }
 
 func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
@@ -26,7 +27,8 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 		data = &map[string]*fieldData.FieldData{}
 	}
 	return &StructGenerator{
-		data: *data,
+		data:      *data,
+		startTime: time.Now(),
 	}
 }
 
@@ -203,13 +205,13 @@ func (s *StructGenerator) codeGen(jsonData interface{}, path string) ([]*ast.Fie
 
 // Processes JSON-Struct elements
 func (s *StructGenerator) processStruct(structData map[string]interface{}, path string) (*ast.StructType, error) {
-	err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{StructType: true, LastSeenTimestamp: time.Now().Unix()}, s.data, path)
+	err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{StructType: true, LastSeenTimestamp: s.startTime.Unix()}, s.data, path)
 	if err != nil {
 		return nil, err
 	}
 	var localFields []*ast.Field
 	for fieldName, field := range structData {
-		err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{JsonFieldName: &fieldName, LastSeenTimestamp: time.Now().Unix()}, s.data, path+"."+strcase.ToCamel(fieldName))
+		err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{JsonFieldName: &fieldName, LastSeenTimestamp: s.startTime.Unix()}, s.data, path+"."+strcase.ToCamel(fieldName))
 		if err != nil {
 			return nil, err
 		}
@@ -261,7 +263,7 @@ func (s *StructGenerator) processSlice(sliceData []interface{}, path string) (as
 		expressionList = append(expressionList, &ast.ArrayType{Elt: &ast.InterfaceType{
 			Methods: &ast.FieldList{}},
 		})
-		err = fieldData.SetOrCombineFieldData(&fieldData.FieldData{EmptyValuePresent: true}, s.data, path)
+		err = fieldData.SetOrCombineFieldData(&fieldData.FieldData{Omitempty: true}, s.data, path)
 		if err != nil {
 			return nil, err
 		}

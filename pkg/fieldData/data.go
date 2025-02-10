@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"time"
 )
 
 type Metadata struct {
@@ -30,8 +29,8 @@ type FieldData struct {
 	MixedTypes bool `json:"mixedTypes,omitempty"`
 	// LastSeenTimestamp Unix timestamp. Is updated whenever a value is seen
 	LastSeenTimestamp int64 `json:"lastSeenTimestamp"`
-	// EmptyValuePresent Is the opposite of omitempty, and is set if the field contains empty values
-	EmptyValuePresent bool `json:"emptyValuePresent,omitempty"`
+	// Omitempty Is set whenever a field is omitted in some response
+	Omitempty bool `json:"emptyValuePresent,omitempty"`
 	// Contains the name, as found in the JSON-File
 	JsonFieldName *string `json:"jsonFieldName,omitempty"`
 	// NameOfActiveTypeAdjuster Name of the TypeAdjuster that replaced the type
@@ -126,10 +125,10 @@ func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
 	}
 
 	// Combine EmptyValuePresent
-	if j.EmptyValuePresent || j1.EmptyValuePresent {
-		jNew.EmptyValuePresent = true
+	if j.Omitempty || j1.Omitempty {
+		jNew.Omitempty = true
 	} else {
-		jNew.EmptyValuePresent = false
+		jNew.Omitempty = false
 	}
 
 	//Combine JsonFieldName
@@ -168,8 +167,7 @@ func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
 	}
 
 	return &FieldData{
-		SeenValues:        map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
-		LastSeenTimestamp: time.Now().Unix(),
+		SeenValues: map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
 	}, nil
 }
 

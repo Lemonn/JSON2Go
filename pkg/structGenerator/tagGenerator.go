@@ -11,6 +11,7 @@ import (
 func (s *StructGenerator) attachJsonTags() {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
+	s.tagOmittedFields()
 	AstUtils.SearchNodes(s.file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if _, ok := (*n).(*ast.StructType); ok && len(parents) > 0 {
 			return true
@@ -36,12 +37,20 @@ func (s *StructGenerator) attachJsonTags() {
 				continue
 			}
 			var jsonTag string
-			if fData.EmptyValuePresent {
-				jsonTag = fmt.Sprintf("`json:\"%s\"`", *fData.JsonFieldName)
-			} else {
+			if fData.Omitempty {
 				jsonTag = fmt.Sprintf("`json:\"%s,omitempty\"`", *fData.JsonFieldName)
+			} else {
+				jsonTag = fmt.Sprintf("`json:\"%s\"`", *fData.JsonFieldName)
 			}
 			(*foundNodes[i].Node).(*ast.StructType).Fields.List[ii].Tag = &ast.BasicLit{Kind: token.STRING, Value: jsonTag}
+		}
+	}
+}
+
+func (s *StructGenerator) tagOmittedFields() {
+	for path, data := range s.data {
+		if data.LastSeenTimestamp < s.startTime.Unix() {
+			s.data[path].Omitempty = true
 		}
 	}
 }

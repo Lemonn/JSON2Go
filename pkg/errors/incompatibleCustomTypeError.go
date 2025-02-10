@@ -4,8 +4,9 @@ package errors
 // it incompatible. A prime example for this is the time.Time TypeChecker. The time type would stay the same,
 // but the parse strings could become incompatible
 type IncompatibleCustomTypeError struct {
-	Path string
-	Err  error
+	Path      string
+	Timestamp int64
+	Err       error
 }
 
 func (i IncompatibleCustomTypeError) Error() string {
