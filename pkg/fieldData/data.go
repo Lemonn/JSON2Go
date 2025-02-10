@@ -145,7 +145,26 @@ func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
 		jNew.StructType = false
 	}
 
-	//TODO combine the missing types
+	//Combine RequiredField
+	if j.RequiredField || j1.RequiredField {
+		jNew.RequiredField = true
+	} else {
+		jNew.RequiredField = false
+	}
+
+	//Combine NameOfActiveTypeAdjuster
+	if j.NameOfActiveTypeAdjuster != nil {
+		jNew.NameOfActiveTypeAdjuster = j.NameOfActiveTypeAdjuster
+	} else {
+		jNew.NameOfActiveTypeAdjuster = j1.NameOfActiveTypeAdjuster
+	}
+
+	//Combine TypeAdjusterData
+	if j.TypeAdjusterData != nil {
+		jNew.TypeAdjusterData = j.TypeAdjusterData
+	} else {
+		jNew.TypeAdjusterData = j1.TypeAdjusterData
+	}
 
 	return &jNew, nil
 }
