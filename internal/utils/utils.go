@@ -3,8 +3,10 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"github.com/iancoleman/strcase"
 	"go/ast"
 	"reflect"
+	"strings"
 )
 
 func WalkExpressions(expr *ast.Expr) (*ast.Expr, error) {
@@ -63,4 +65,9 @@ func GeneratedNestedArray(levelOfArrays int, InnerExpr *ast.Expr, OuterExpr ast.
 		}
 	}
 	return InnerExpr, OuterExpr
+}
+
+func GetFieldIdentFromPath(path string) []*ast.Ident {
+	pathElements := strings.Split(path, ".")
+	return []*ast.Ident{{Name: strcase.ToCamel(pathElements[len(pathElements)-1])}}
 }

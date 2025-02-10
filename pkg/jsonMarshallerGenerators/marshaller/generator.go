@@ -11,10 +11,10 @@ import (
 )
 
 type Generator struct {
-	data map[string]*fieldData.Data
+	data map[string]*fieldData.FieldData
 }
 
-func NewGenerator(data map[string]*fieldData.Data) *Generator {
+func NewGenerator(data map[string]*fieldData.FieldData) *Generator {
 	return &Generator{data: data}
 }
 

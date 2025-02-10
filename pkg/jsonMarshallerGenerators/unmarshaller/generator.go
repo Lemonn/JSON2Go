@@ -12,11 +12,11 @@ import (
 )
 
 type Generator struct {
-	data  map[string]*fieldData.Data
+	data  map[string]*fieldData.FieldData
 	added bool
 }
 
-func NewGenerator(data map[string]*fieldData.Data) *Generator {
+func NewGenerator(data map[string]*fieldData.FieldData) *Generator {
 	return &Generator{data: data}
 }
 
@@ -61,7 +61,7 @@ func (g *Generator) Generate(file *ast.File) error {
 			}
 		}
 		if _, ok := g.data[path]; !ok || nested {
-			fmt.Println(path)
+			fmt.Println(path + "dsfasdfsdaf")
 			continue
 		}
 

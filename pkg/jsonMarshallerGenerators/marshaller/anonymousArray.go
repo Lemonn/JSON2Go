@@ -13,7 +13,7 @@ import (
 
 func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
-	var fData *fieldData.Data
+	var fData *fieldData.FieldData
 	if v, ok := g.data[path]; !ok || v.BaseType == nil || levelOfArrays == 0 {
 		return nil, nil, nil
 	} else {

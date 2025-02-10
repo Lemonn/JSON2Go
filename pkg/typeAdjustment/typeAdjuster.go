@@ -11,14 +11,14 @@ import (
 )
 
 type TypeAdjuster struct {
-	data map[string]*fieldData.Data
+	data map[string]*fieldData.FieldData
 }
 
-func NewTypeAdjuster(data map[string]*fieldData.Data) *TypeAdjuster {
+func NewTypeAdjuster(data map[string]*fieldData.FieldData) *TypeAdjuster {
 	return &TypeAdjuster{data: data}
 }
 
-// AdjustTypes Goes through all fields and looks at the json2go Data, to determine if there's a better suiting type
+// AdjustTypes Goes through all fields and looks at the json2go FieldData, to determine if there's a better suiting type
 // for the seen float and string values.
 // Floats which could be represented as an int, are changed to int
 // Strings which could be represented as UUID are change into uuid.UUID

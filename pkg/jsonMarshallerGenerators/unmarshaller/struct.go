@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"github.com/Lemonn/JSON2Go/pkg/structGenerator"
 	"go/ast"
 	"go/token"
 	"unicode"
@@ -21,7 +20,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{
-						&ast.Ident{
+						{
 							Name: "data",
 						},
 					},
@@ -48,7 +47,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{
-						&ast.Ident{
+						{
 							Name: "joinedErrors",
 						},
 					},
@@ -114,9 +113,9 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	})
 
 	for _, field := range str.Fields.List {
-		var fData *fieldData.Data
+		var fData *fieldData.FieldData
 		var jsonName string
-		if v, ok := structGenerator.Tags[path+"."+field.Names[0].Name]; !ok {
+		if v, ok := g.data[path+"."+field.Names[0].Name]; !ok {
 			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
 		} else if v.JsonFieldName == nil {
 			continue
@@ -161,7 +160,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 								Specs: []ast.Spec{
 									&ast.ValueSpec{
 										Names: []*ast.Ident{
-											&ast.Ident{
+											{
 												Name: "unmarshalledValue",
 											},
 										},
@@ -392,7 +391,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 											Specs: []ast.Spec{
 												&ast.ValueSpec{
 													Names: []*ast.Ident{
-														&ast.Ident{
+														{
 															Name: "additionalElementsError",
 														},
 													},
@@ -573,7 +572,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 											Specs: []ast.Spec{
 												&ast.ValueSpec{
 													Names: []*ast.Ident{
-														&ast.Ident{
+														{
 															Name: "additionalElementsError",
 														},
 													},
@@ -777,9 +776,9 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 		Type: &ast.FuncType{
 			TypeParams: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "T",
 							},
 						},
@@ -791,9 +790,9 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 			},
 			Params: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "errType",
 							},
 						},
@@ -801,9 +800,9 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 							Name: "T",
 						},
 					},
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "e",
 							},
 						},
@@ -815,14 +814,14 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 			},
 			Results: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Type: &ast.ArrayType{
 							Elt: &ast.Ident{
 								Name: "T",
 							},
 						},
 					},
-					&ast.Field{
+					{
 						Type: &ast.Ident{
 							Name: "error",
 						},
@@ -838,7 +837,7 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 						Specs: []ast.Spec{
 							&ast.ValueSpec{
 								Names: []*ast.Ident{
-									&ast.Ident{
+									{
 										Name: "result",
 									},
 								},
@@ -878,9 +877,9 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 										&ast.InterfaceType{
 											Methods: &ast.FieldList{
 												List: []*ast.Field{
-													&ast.Field{
+													{
 														Names: []*ast.Ident{
-															&ast.Ident{
+															{
 																Name: "Unwrap",
 															},
 														},
@@ -888,7 +887,7 @@ func addGetAllErrorsOfTypeFunction(file *ast.File) {
 															Params: &ast.FieldList{},
 															Results: &ast.FieldList{
 																List: []*ast.Field{
-																	&ast.Field{
+																	{
 																		Type: &ast.ArrayType{
 																			Elt: &ast.Ident{
 																				Name: "error",
@@ -1236,9 +1235,9 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 		Type: &ast.FuncType{
 			TypeParams: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "T",
 							},
 						},
@@ -1250,9 +1249,9 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 			},
 			Params: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "errType",
 							},
 						},
@@ -1260,9 +1259,9 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 							Name: "T",
 						},
 					},
-					&ast.Field{
+					{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "e",
 							},
 						},
@@ -1274,7 +1273,7 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 			},
 			Results: &ast.FieldList{
 				List: []*ast.Field{
-					&ast.Field{
+					{
 						Type: &ast.Ident{
 							Name: "error",
 						},
@@ -1311,9 +1310,9 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 										&ast.InterfaceType{
 											Methods: &ast.FieldList{
 												List: []*ast.Field{
-													&ast.Field{
+													{
 														Names: []*ast.Ident{
-															&ast.Ident{
+															{
 																Name: "Unwrap",
 															},
 														},
@@ -1321,7 +1320,7 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 															Params: &ast.FieldList{},
 															Results: &ast.FieldList{
 																List: []*ast.Field{
-																	&ast.Field{
+																	{
 																		Type: &ast.ArrayType{
 																			Elt: &ast.Ident{
 																				Name: "error",

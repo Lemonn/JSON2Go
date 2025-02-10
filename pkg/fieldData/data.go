@@ -9,14 +9,12 @@ import (
 	"time"
 )
 
-// ParseFunctions Holds the names of the parse functions
-type ParseFunctions struct {
-	// FromTypeParseFunction Holds the function name, which converts from json to custom type
-	FromTypeParseFunction string `json:"fromTypeParseFunction,omitempty"`
-	// ToTypeParseFunction Holds the function name, which converts from custom to json type
-	ToTypeParseFunction string `json:"toTypeParseFunction,omitempty"`
+type Metadata struct {
+	TotalSampleCount int                   `json:"totalSampleCount"`
+	LastRunTimestamp int64                 `json:"lastRunTimestamp"`
+	Data             map[string]*FieldData `json:"data"`
 }
-type Data struct {
+type FieldData struct {
 	// SeenValues Holds all seen field values and their corresponding type
 	SeenValues map[string]string `json:"seenValues,omitempty"`
 	// CheckedNonMatchingTypes Is used to store a map of non-matching types referencing the time of storage as unix timestamp.
@@ -42,11 +40,20 @@ type Data struct {
 	// IncompatibleCustomType error, for example if a type such as time.Time stays the same but the underling
 	// time strings are incompatible
 	TypeAdjusterData json.RawMessage `json:"typeAdjusterData,omitempty"`
-	StructType       bool            `json:"structType,omitempty"`
+	// StructType Set whenever only data of a struct is stored.
+	StructType bool `json:"structType,omitempty"`
 }
 
-func (j *Data) Combine(j1 *Data) (*Data, error) {
-	var jNew Data
+// ParseFunctions Holds the names of the parse functions
+type ParseFunctions struct {
+	// FromTypeParseFunction Holds the function name, which converts from json to custom type
+	FromTypeParseFunction string `json:"fromTypeParseFunction,omitempty"`
+	// ToTypeParseFunction Holds the function name, which converts from custom to json type
+	ToTypeParseFunction string `json:"toTypeParseFunction,omitempty"`
+}
+
+func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
+	var jNew FieldData
 	//Combine BaseType
 	if j.BaseType == nil && j1.BaseType == nil {
 		jNew.BaseType = nil
@@ -129,10 +136,20 @@ func (j *Data) Combine(j1 *Data) (*Data, error) {
 	} else {
 		jNew.JsonFieldName = j1.JsonFieldName
 	}
+
+	//Combine StructType
+	if j.StructType || j1.StructType {
+		jNew.StructType = true
+	} else {
+		jNew.StructType = false
+	}
+
+	//TODO combine the missing types
+
 	return &jNew, nil
 }
 
-func NewTagFromFieldData(fieldData interface{}) *Data {
+func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
 	var fieldValue string
 	switch t := fieldData.(type) {
 	case float64:
@@ -144,11 +161,25 @@ func NewTagFromFieldData(fieldData interface{}) *Data {
 		fieldValue = "false"
 	case string:
 		fieldValue = fieldData.(string)
+	default:
+		return nil, errors.New(fmt.Sprintf("unsupported type of field data: %T", fieldData))
 	}
 
-	//TODO handle empty field value
-	return &Data{
+	return &FieldData{
 		SeenValues:        map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
 		LastSeenTimestamp: time.Now().Unix(),
+	}, nil
+}
+
+func SetOrCombineFieldData(data *FieldData, tags map[string]*FieldData, path string) error {
+	if v, ok := tags[path]; ok {
+		combine, err := data.Combine(v)
+		if err != nil {
+			return err
+		}
+		tags[path] = combine
+	} else {
+		tags[path] = data
 	}
+	return nil
 }

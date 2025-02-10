@@ -60,7 +60,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 
 	for _, field := range str.Fields.List {
 
-		var fData *fieldData.Data
+		var fData *fieldData.FieldData
 		if v, ok := g.data[path+"."+field.Names[0].Name]; !ok {
 			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
 		} else if v.JsonFieldName == nil {
@@ -183,7 +183,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	return stmts, []string{"encoding/json"}, nil
 }
 
-func structTypeFromFields(fields []*ast.Field, path string, tags map[string]*fieldData.Data) (*ast.DeclStmt, error) {
+func structTypeFromFields(fields []*ast.Field, path string, tags map[string]*fieldData.FieldData) (*ast.DeclStmt, error) {
 	var localFields []*ast.Field
 	for _, field := range fields {
 
