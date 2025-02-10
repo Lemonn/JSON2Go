@@ -118,11 +118,15 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 		}
 		checker.SetFile(file)
 		if checker.CouldTypeBeApplied(json2GoTag.SeenValues) {
+			//Set FieldData
 			json2GoTag.ParseFunctions = &fieldData.ParseFunctions{
 				FromTypeParseFunction: "from" + baseName,
 				ToTypeParseFunction:   "to" + baseName,
 			}
 			json2GoTag.BaseType = &originalType
+			checkerName := checker.GetName()
+			json2GoTag.NameOfActiveTypeAdjuster = &checkerName
+
 			fromTypeFunction, err := checker.GenerateFromTypeFunction(&ast.FuncDecl{
 				Name: &ast.Ident{
 					Name: json2GoTag.ParseFunctions.FromTypeParseFunction,
@@ -130,9 +134,9 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 				Type: &ast.FuncType{
 					Params: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Names: []*ast.Ident{
-									&ast.Ident{
+									{
 										Name: "baseValue",
 									},
 								},
@@ -144,10 +148,10 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 					},
 					Results: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Type: checker.GetType(),
 							},
-							&ast.Field{
+							{
 								Type: &ast.Ident{
 									Name: "error",
 								},
@@ -169,9 +173,9 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 				Type: &ast.FuncType{
 					Params: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Names: []*ast.Ident{
-									&ast.Ident{
+									{
 										Name: "baseValue",
 									},
 								},
@@ -181,12 +185,12 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 					},
 					Results: &ast.FieldList{
 						List: []*ast.Field{
-							&ast.Field{
+							{
 								Type: &ast.Ident{
 									Name: originalType,
 								},
 							},
-							&ast.Field{
+							{
 								Type: &ast.Ident{
 									Name: "error",
 								},

@@ -144,17 +144,17 @@ func resetToBaseType(expr *ast.Expr, json2go *fieldData.FieldData) {
 	}
 }
 
-func RenamePaths(tags map[string]*fieldData.FieldData) {
-	for s, tag := range tags {
-		pathElements := strings.Split(s, ".")
+func (s *StructGenerator) renamePaths() {
+	for path, tag := range s.data {
+		pathElements := strings.Split(path, ".")
 		if len(pathElements) > 1 {
 			if tag.StructType {
-				tags[pathElements[len(pathElements)-1]] = &fieldData.FieldData{LastSeenTimestamp: tag.LastSeenTimestamp, StructType: true}
+				s.data[pathElements[len(pathElements)-1]] = &fieldData.FieldData{LastSeenTimestamp: tag.LastSeenTimestamp, StructType: true}
 			}
 			tag.StructType = false
-			tags[pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1]] = tag
-			if s != pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1] {
-				delete(tags, s)
+			s.data[pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1]] = tag
+			if path != pathElements[len(pathElements)-2]+"."+pathElements[len(pathElements)-1] {
+				delete(s.data, path)
 			}
 		}
 	}

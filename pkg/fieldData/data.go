@@ -42,6 +42,8 @@ type FieldData struct {
 	TypeAdjusterData json.RawMessage `json:"typeAdjusterData,omitempty"`
 	// StructType Set whenever only data of a struct is stored.
 	StructType bool `json:"structType,omitempty"`
+	// RequiredField set to true, if the unmarshall generator should make this a required field.
+	RequiredField bool `json:"requiredField,omitempty"`
 }
 
 // ParseFunctions Holds the names of the parse functions

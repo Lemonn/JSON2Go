@@ -2,6 +2,7 @@ package structGenerator
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
@@ -13,8 +14,8 @@ import (
 )
 
 type StructGenerator struct {
-	data  map[string]*fieldData.FieldData
-	decls *[]ast.Decl
+	data map[string]*fieldData.FieldData
+	file *ast.File
 }
 
 func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
@@ -26,8 +27,8 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 	}
 }
 
-func (s *StructGenerator) GenerateCodeIntoDecl(jsonData []byte, decls *[]ast.Decl, structName string) (map[string]*fieldData.FieldData, error) {
-	s.decls = decls
+func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string) (map[string]*fieldData.FieldData, error) {
+	s.file = file
 	var JsonData interface{}
 	err := json.Unmarshal(jsonData, &JsonData)
 	if err != nil {
@@ -43,6 +44,10 @@ func (s *StructGenerator) GenerateCodeIntoDecl(jsonData []byte, decls *[]ast.Dec
 	if err != nil {
 		return nil, err
 	}
+
+	AstUtils.UnnestStruct(nil, file)
+	s.renamePaths()
+	s.attachJsonTags()
 	return s.data, nil
 }
 
@@ -52,7 +57,7 @@ func (s *StructGenerator) packType(fields []*ast.Field, structName string) error
 		return err
 	}
 	if reflect.TypeOf(*expr) == reflect.TypeOf(&ast.StructType{}) && levelOfArrays > 0 {
-		*s.decls = append(*s.decls, &ast.GenDecl{
+		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
 			Tok: token.TYPE,
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
@@ -68,7 +73,7 @@ func (s *StructGenerator) packType(fields []*ast.Field, structName string) error
 			},
 		})
 
-		*s.decls = append(*s.decls, &ast.GenDecl{
+		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
 			Tok: token.TYPE,
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
@@ -111,7 +116,7 @@ func (s *StructGenerator) packType(fields []*ast.Field, structName string) error
 
 		}
 	} else {
-		*s.decls = append(*s.decls, &ast.GenDecl{
+		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
 			Tok: token.TYPE,
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
