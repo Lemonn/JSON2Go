@@ -3,6 +3,7 @@ package buildin
 import (
 	"encoding/json"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/token"
@@ -21,7 +22,7 @@ func (i *IntTypeChecker) GetState() (json.RawMessage, error) {
 	return nil, nil
 }
 
-func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
+func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
 	for value := range seenValues {
 		_, err := strconv.Atoi(value)
 		if err != nil {

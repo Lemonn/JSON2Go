@@ -2,6 +2,7 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/google/uuid"
 	"go/ast"
@@ -28,7 +29,7 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
+func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
 	var err error
 	for value := range seenValues {
 		_, err = uuid.Parse(value)

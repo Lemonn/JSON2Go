@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/iancoleman/strcase"
 	"go/ast"
@@ -16,6 +17,7 @@ type EnumTypeChecker struct {
 	minFilesSeen   int
 	maxFieldCount  int
 	minFieldCount  int
+	minTimesSeen   int
 	seenValues     []string
 	fieldType      string
 	file           *ast.File
@@ -25,31 +27,39 @@ type EnumTypeChecker struct {
 	state          *EnumTypeCheckerState
 }
 
-func NewEnumTypeChecker(minFilesSeen int, minFieldCount int, maxFieldCount int) *EnumTypeChecker {
+func NewEnumTypeChecker(settings *EnumTypeCheckerSettings) *EnumTypeChecker {
 	return &EnumTypeChecker{
-		minFilesSeen:   minFilesSeen,
-		maxFieldCount:  maxFieldCount,
+		minFilesSeen:   settings.MinFilesSeen,
+		maxFieldCount:  settings.MaxFieldCount,
 		totalFilesSeen: 100,
 		minFieldCount:  2,
+		minTimesSeen:   settings.MinTimesSeen,
 	}
+}
+
+type EnumTypeCheckerSettings struct {
+	MinFilesSeen  int
+	MinFieldCount int
+	MaxFieldCount int
+	MinTimesSeen  int
 }
 
 type EnumTypeCheckerState struct {
 	FieldOrder map[string]int
 }
 
-func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
+func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
 	if e.totalFilesSeen < e.minFilesSeen {
 		return typeAdjustment.StateUndecided
 	} else if len(seenValues) > e.maxFieldCount || len(seenValues) < e.minFieldCount {
 		return typeAdjustment.StateFailed
 	}
 	var fieldType string
-	for _, Type := range seenValues {
-		if Type != "string" {
+	for _, valueData := range seenValues {
+		if valueData.Type != "string" {
 			return typeAdjustment.StateFailed
 		} else if fieldType == "" {
-			fieldType = Type
+			fieldType = valueData.Type
 		}
 	}
 	if e.state == nil {
@@ -67,7 +77,10 @@ func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeA
 	e.seenValues = []string{}
 	e.fieldType = fieldType
 	if e.state != nil && e.state.FieldOrder != nil {
-		for fieldValue, _ := range seenValues {
+		for fieldValue, fieldValues := range seenValues {
+			if e.minTimesSeen >= fieldValues.Count {
+				return typeAdjustment.StateUndecided
+			}
 			if _, ok := e.state.FieldOrder[fieldValue]; !ok {
 				e.state.FieldOrder[fieldValue] = len(e.state.FieldOrder)
 			}

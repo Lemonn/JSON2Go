@@ -56,8 +56,8 @@ func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, 
 	s.attachJsonTags()
 
 	if typeAdjusters != nil && len(typeAdjusters) > 0 {
-		ta := typeAdjustment.NewTypeAdjuster(s.data)
-		err = ta.AdjustTypes(file, typeAdjusters, true)
+		ta := typeAdjustment.NewTypeAdjuster(s.file, s.data)
+		err = ta.AdjustTypes(typeAdjusters, true)
 		if err != nil {
 			return nil, err
 		}

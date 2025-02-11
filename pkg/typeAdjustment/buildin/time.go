@@ -2,6 +2,7 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/araddon/dateparse"
 	"go/ast"
@@ -55,7 +56,7 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
+func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
 	var err error
 	for value := range seenValues {
 		t.state.LayoutString, err = dateparse.ParseFormat(value)

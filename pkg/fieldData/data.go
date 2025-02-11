@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	errors2 "github.com/Lemonn/JSON2Go/pkg/errors"
 	"reflect"
 	"strconv"
 )
@@ -15,7 +16,7 @@ type Metadata struct {
 }
 type FieldData struct {
 	// SeenValues Holds all seen field values and their corresponding type
-	SeenValues map[string]string `json:"seenValues,omitempty"`
+	SeenValues map[string]*ValueData `json:"seenValues,omitempty"`
 	// CheckedNonMatchingTypes Is used to store a map of non-matching types referencing the time of storage as unix timestamp.
 	// This is useful when working with a lot of input data, and the seen values becomes to big
 	CheckedNonMatchingTypes map[string]int64 `json:"checkedNonMatchingTypes,omitempty"`
@@ -49,6 +50,11 @@ type FieldData struct {
 	// It's up to the caller, what to do with this. errors.IncompatibleCustomTypeError or TypeChangeError
 	// indicate a major version change. Should be set to nil, before next run!
 	Error error `json:"error,omitempty"`
+}
+
+type ValueData struct {
+	Type  string `json:"type,omitempty"`
+	Count int    `json:"count,omitempty"`
 }
 
 // ParseFunctions Holds the names of the parse functions
@@ -89,18 +95,34 @@ func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
 	}
 
 	//Combine SeenValues
-	values := make(map[string]string)
+	values := make(map[string][]*ValueData)
 	if j.SeenValues != nil {
 		for value, FieldType := range j.SeenValues {
-			values[value] = FieldType
+			values[value] = []*ValueData{}
+			values[value] = append(values[value], FieldType)
 		}
 	}
 	if j1.SeenValues != nil {
 		for value, FieldType := range j1.SeenValues {
-			values[value] = FieldType
+			if _, ok := values[value]; !ok {
+				values[value] = []*ValueData{}
+			}
+			values[value] = append(values[value], FieldType)
 		}
 	}
-	jNew.SeenValues = values
+	combinedValues := map[string]*ValueData{}
+	var err error
+	for key, vData := range values {
+		if len(vData) > 1 {
+			combinedValues[key], err = vData[0].Combine(vData[1])
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			combinedValues[key] = vData[0]
+		}
+	}
+	jNew.SeenValues = combinedValues
 
 	//Combine NonMatchingTypes
 	NonMatchingTypes := make(map[string]int64)
@@ -175,6 +197,22 @@ func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
 	return &jNew, nil
 }
 
+func (v *ValueData) Combine(v1 *ValueData) (*ValueData, error) {
+	var vNew ValueData
+	// Combine Type
+	if v.Type == v1.Type {
+		vNew.Type = v1.Type
+	} else {
+		return nil, &errors2.TypeConflictError{
+			OldType: v.Type,
+			NewType: v1.Type,
+		}
+	}
+	//Combine Count
+	vNew.Count = v.Count + v1.Count
+	return &vNew, nil
+}
+
 func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
 	var fieldValue string
 	switch t := fieldData.(type) {
@@ -192,7 +230,10 @@ func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
 	}
 
 	return &FieldData{
-		SeenValues: map[string]string{fieldValue: reflect.TypeOf(fieldData).String()},
+		SeenValues: map[string]*ValueData{fieldValue: {
+			Type:  reflect.TypeOf(fieldData).String(),
+			Count: 1,
+		}},
 	}, nil
 }
 

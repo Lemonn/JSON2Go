@@ -12,10 +12,11 @@ import (
 
 type TypeAdjuster struct {
 	data map[string]*fieldData.FieldData
+	file *ast.File
 }
 
-func NewTypeAdjuster(data map[string]*fieldData.FieldData) *TypeAdjuster {
-	return &TypeAdjuster{data: data}
+func NewTypeAdjuster(file *ast.File, data map[string]*fieldData.FieldData) *TypeAdjuster {
+	return &TypeAdjuster{data: data, file: file}
 }
 
 // AdjustTypes Goes through all fields and looks at the json2go FieldData, to determine if there's a better suiting type
@@ -23,11 +24,11 @@ func NewTypeAdjuster(data map[string]*fieldData.FieldData) *TypeAdjuster {
 // Floats which could be represented as an int, are changed to int
 // Strings which could be represented as UUID are change into uuid.UUID
 // Strings which could be represented as time, are changed into time.Time
-func (ta *TypeAdjuster) AdjustTypes(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction, skipPreviouslyFailed bool) error {
+func (ta *TypeAdjuster) AdjustTypes(registeredTypeCheckers []TypeDeterminationFunction, skipPreviouslyFailed bool) error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
 	var requiredImports []string
-	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+	AstUtils.SearchNodes(ta.file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if _, ok := (*n).(*ast.StructType); ok {
 			return true
 		} else if _, ok := (*n).(*ast.ArrayType); ok {
@@ -60,14 +61,14 @@ func (ta *TypeAdjuster) AdjustTypes(file *ast.File, registeredTypeCheckers []Typ
 				continue
 			}
 			e := ast.Expr(t)
-			localRequiredImports, err := ta.runTypeCheckers(file, registeredTypeCheckers, path, path, &e)
+			localRequiredImports, err := ta.runTypeCheckers(registeredTypeCheckers, path, path, &e)
 			if err != nil {
 				return err
 			}
 			requiredImports = append(requiredImports, localRequiredImports...)
 		case *ast.StructType:
 			for _, field := range t.Fields.List {
-				localRequiredImports, err := ta.runTypeCheckers(file, registeredTypeCheckers, path+"."+field.Names[0].Name, field.Names[0].Name, &field.Type)
+				localRequiredImports, err := ta.runTypeCheckers(registeredTypeCheckers, path+"."+field.Names[0].Name, field.Names[0].Name, &field.Type)
 				if err != nil {
 					return err
 				}
@@ -76,12 +77,13 @@ func (ta *TypeAdjuster) AdjustTypes(file *ast.File, registeredTypeCheckers []Typ
 		}
 
 	}
-	AstUtils.AddMissingImports(file, requiredImports)
+	AstUtils.AddMissingImports(ta.file, requiredImports)
 	return nil
 }
 
-func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers []TypeDeterminationFunction, path string, name string, e *ast.Expr) ([]string, error) {
+func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminationFunction, path string, name string, e *ast.Expr) ([]string, error) {
 	var requiredImports []string
+	var typeReplaced bool
 	var err error
 
 	//Get input type
@@ -116,109 +118,18 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 				continue
 			}
 		}
-		checker.SetFile(file)
+		checker.SetFile(ta.file)
 		err = checker.SetState(json2GoTag.TypeAdjusterData, path)
 		if err != nil {
 			return nil, err
 		}
-		if state := checker.CouldTypeBeApplied(json2GoTag.SeenValues); state == StateApplicable {
-			//Set FieldData
-			json2GoTag.ParseFunctions = &fieldData.ParseFunctions{
-				FromTypeParseFunction: "from" + baseName,
-				ToTypeParseFunction:   "to" + baseName,
-			}
-			json2GoTag.BaseType = &originalType
-			checkerName := checker.GetName()
-			json2GoTag.NameOfActiveTypeAdjuster = &checkerName
-
-			fromTypeFunction, err := checker.GenerateFromTypeFunction(&ast.FuncDecl{
-				Name: &ast.Ident{
-					Name: json2GoTag.ParseFunctions.FromTypeParseFunction,
-				},
-				Type: &ast.FuncType{
-					Params: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Names: []*ast.Ident{
-									{
-										Name: "baseValue",
-									},
-								},
-								Type: &ast.Ident{
-									Name: originalType,
-								},
-							},
-						},
-					},
-					Results: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Type: checker.GetType(),
-							},
-							{
-								Type: &ast.Ident{
-									Name: "error",
-								},
-							},
-						},
-					},
-				},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{},
-				},
-			})
+		if state := checker.CouldTypeBeApplied(json2GoTag.SeenValues); state == StateApplicable && !typeReplaced {
+			typeReplaced = true
+			ri, err := ta.replaceType(json2GoTag, baseName, originalType, checker, exp, requiredImports)
 			if err != nil {
 				return nil, err
 			}
-			toTypeFunction, err := checker.GenerateToTypeFunction(&ast.FuncDecl{
-				Name: &ast.Ident{
-					Name: json2GoTag.ParseFunctions.ToTypeParseFunction,
-				},
-				Type: &ast.FuncType{
-					Params: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Names: []*ast.Ident{
-									{
-										Name: "baseValue",
-									},
-								},
-								Type: checker.GetType(),
-							},
-						},
-					},
-					Results: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Type: &ast.Ident{
-									Name: originalType,
-								},
-							},
-							{
-								Type: &ast.Ident{
-									Name: "error",
-								},
-							},
-						},
-					},
-				},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{},
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			file.Decls = append(file.Decls, fromTypeFunction)
-			file.Decls = append(file.Decls, toTypeFunction)
-			*exp = checker.GetType()
-			json2GoTag.BaseType = &originalType
-			json2GoTag.TypeAdjusterData, err = checker.GetState()
-			if err != nil {
-				return nil, err
-			}
-			requiredImports = append(requiredImports, checker.GetRequiredImports()...)
-			break
+			requiredImports = append(requiredImports, ri...)
 		} else if state == StateUndecided {
 			continue
 		} else {
@@ -231,5 +142,106 @@ func (ta *TypeAdjuster) runTypeCheckers(file *ast.File, registeredTypeCheckers [
 			}
 		}
 	}
+	return requiredImports, nil
+}
+
+// TODO look if all params are really needed
+func (ta *TypeAdjuster) replaceType(json2GoTag *fieldData.FieldData, baseName string, originalType string, checker TypeDeterminationFunction, exp *ast.Expr, requiredImports []string) ([]string, error) {
+	//Set FieldData
+	json2GoTag.ParseFunctions = &fieldData.ParseFunctions{
+		FromTypeParseFunction: "from" + baseName,
+		ToTypeParseFunction:   "to" + baseName,
+	}
+	json2GoTag.BaseType = &originalType
+	checkerName := checker.GetName()
+	json2GoTag.NameOfActiveTypeAdjuster = &checkerName
+
+	fromTypeFunction, err := checker.GenerateFromTypeFunction(&ast.FuncDecl{
+		Name: &ast.Ident{
+			Name: json2GoTag.ParseFunctions.FromTypeParseFunction,
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: "baseValue",
+							},
+						},
+						Type: &ast.Ident{
+							Name: originalType,
+						},
+					},
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Type: checker.GetType(),
+					},
+					{
+						Type: &ast.Ident{
+							Name: "error",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	toTypeFunction, err := checker.GenerateToTypeFunction(&ast.FuncDecl{
+		Name: &ast.Ident{
+			Name: json2GoTag.ParseFunctions.ToTypeParseFunction,
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: "baseValue",
+							},
+						},
+						Type: checker.GetType(),
+					},
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Type: &ast.Ident{
+							Name: originalType,
+						},
+					},
+					{
+						Type: &ast.Ident{
+							Name: "error",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	ta.file.Decls = append(ta.file.Decls, fromTypeFunction)
+	ta.file.Decls = append(ta.file.Decls, toTypeFunction)
+	*exp = checker.GetType()
+	json2GoTag.BaseType = &originalType
+	json2GoTag.TypeAdjusterData, err = checker.GetState()
+	if err != nil {
+		return nil, err
+	}
+	requiredImports = append(requiredImports, checker.GetRequiredImports()...)
 	return requiredImports, nil
 }
