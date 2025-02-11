@@ -3,6 +3,7 @@ package buildin
 import (
 	"encoding/json"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/token"
 	"strconv"
@@ -12,7 +13,7 @@ type IntTypeChecker struct {
 	requiredImports []string
 }
 
-func (i *IntTypeChecker) SetState(state json.RawMessage) error {
+func (i *IntTypeChecker) SetState(state json.RawMessage, currentPath string) error {
 	return nil
 }
 
@@ -20,14 +21,14 @@ func (i *IntTypeChecker) GetState() (json.RawMessage, error) {
 	return nil, nil
 }
 
-func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
+func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
 	for value := range seenValues {
 		_, err := strconv.Atoi(value)
 		if err != nil {
-			return false
+			return typeAdjustment.StateFailed
 		}
 	}
-	return true
+	return typeAdjustment.StateApplicable
 }
 
 func (i *IntTypeChecker) GetType() ast.Expr {

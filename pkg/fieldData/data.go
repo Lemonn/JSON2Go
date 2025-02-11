@@ -43,6 +43,12 @@ type FieldData struct {
 	StructType bool `json:"structType,omitempty"`
 	// RequiredField set to true, if the unmarshall generator should make this a required field.
 	RequiredField bool `json:"requiredField,omitempty"`
+	// ExcludedTypeCheckers List of TypeChecker names that should not be run on this field.
+	ExcludedTypeCheckers []string `json:"excludedTypeCheckers,omitempty"`
+	// Error Holds a error of type FieldPresenceChangeError, errors.IncompatibleCustomTypeError or errors.TypeChangeError.
+	// It's up to the caller, what to do with this. errors.IncompatibleCustomTypeError or TypeChangeError
+	// indicate a major version change. Should be set to nil, before next run!
+	Error error `json:"error,omitempty"`
 }
 
 // ParseFunctions Holds the names of the parse functions

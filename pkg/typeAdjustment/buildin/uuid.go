@@ -2,13 +2,14 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/google/uuid"
 	"go/ast"
 )
 
 type UUIDTypeChecker struct{}
 
-func (u *UUIDTypeChecker) SetState(state json.RawMessage) error {
+func (u *UUIDTypeChecker) SetState(state json.RawMessage, currentPath string) error {
 	return nil
 }
 
@@ -27,15 +28,15 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
+func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
 	var err error
 	for value := range seenValues {
 		_, err = uuid.Parse(value)
 		if err != nil {
-			return false
+			return typeAdjustment.StateFailed
 		}
 	}
-	return true
+	return typeAdjustment.StateApplicable
 }
 
 func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {

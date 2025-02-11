@@ -2,6 +2,7 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/araddon/dateparse"
 	"go/ast"
 )
@@ -23,7 +24,7 @@ type timeTypeCheckerState struct {
 	LayoutString string `json:"layoutString,omitempty"`
 }
 
-func (t *TimeTypeChecker) SetState(state json.RawMessage) error {
+func (t *TimeTypeChecker) SetState(state json.RawMessage, currentPath string) error {
 	var s timeTypeCheckerState
 	if state != nil {
 		err := json.Unmarshal(state, &s)
@@ -54,18 +55,18 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) bool {
+func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeAdjustment.State {
 	var err error
 	for value := range seenValues {
 		t.state.LayoutString, err = dateparse.ParseFormat(value)
 		if t.ignoreYearOnlyStrings && t.state.LayoutString == "2006" {
-			return false
+			return typeAdjustment.StateFailed
 		}
 		if err != nil {
-			return false
+			return typeAdjustment.StateFailed
 		}
 	}
-	return true
+	return typeAdjustment.StateApplicable
 }
 
 func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
