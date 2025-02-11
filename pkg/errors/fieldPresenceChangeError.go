@@ -1,5 +1,6 @@
 package errors
 
+// FieldPresenceChangeError is set whenever a field changes from/to omitempty
 type FieldPresenceChangeError struct {
 	NewState  string
 	Timestamp int64

@@ -4,7 +4,6 @@ Json2Go is an advanced JSON to Golang-datatype generator. That comes with a lot 
 
 When using documented APIs, one creates a struct and file type parser from a given specification such as OpenAPI. Json2Go provides a similar experience. But instead of taking in a given specification, it uses a set of API responses to determine the struct and corresponding types.
 
-
 ## Features
 
 - Obviously, generate Go structs from a JSON file.
@@ -24,7 +23,7 @@ When using documented APIs, one creates a struct and file type parser from a giv
 **Important, it's required to unnest your generated structs first, before using the type adjustment!**
 
 Json2Go can determine the best type of set of input values using TypeAdjusters. It comes with some built-in ones
-[Build-in TypeCheckers](#build-in-typecheckers) and could also be extended with custom ones.
+[Build-in TypeCheckers](#list-of-build-in-typecheckers) and could also be extended with custom ones.
 
 
 ### Build-in
@@ -46,20 +45,30 @@ if err != nil {
 }
 ```
 
+#### List of Build-in TypeCheckers
+
+
+| Name                    | Type      | Settings                                                                                                                                                                                                                                                      | Description                                                                                                                                                                                                                                                       |
+|-------------------------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| json2go.UUIDTypeChecker | uuid.UUID |                                                                                                                                                                                                                                                               | Checks if values could be represented as `uuid.UUID` using `github.com/google/uuid` as a dependency                                                                                                                                                               |
+| json2go.TimeTypeChecker | time.Time | `IgnoreYearOnlyStrings` Set to true, to ignore year only values                                                                                                                                                                                               | Checks if values can be represented as `time.Time` uses `github.com/araddon/dateparse` to check for valid time types.                                                                                                                                             |
+| json2go.IntTypeChecker  | int       |                                                                                                                                                                                                                                                               | Checks if the given values can be represented as integers. Be careful with APIs that use the dot notation, to signal a float response, despite the values being valid integer ones. The information is lost during the process. Only the pure value plays a role. |
+| json2go.EnumTypeChecker | enum      | `minFilesSeen` Minimum amount of files processes before a decision is made. <br/> `minFieldCount` MInimum amount of different values present, to be combined into an enum <br/> `maxFieldCount` Maximum amount of fields that should be combined into an enum | Checks if a set of string values could be represent as an enum                                                                                                                                                                                                    |
+
 ### Custom ones
 
 To create a custom adjuster, implement the following interface
 
 ```golang
 type TypeDeterminationFunction interface {
-	CouldTypeBeApplied(seenValues map[string]string) bool
+	CouldTypeBeApplied(seenValues map[string]string) State
 	GetType() ast.Expr
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
 	GetRequiredImports() []string
 	SetFile(file *ast.File)
 	GetName() string
-	SetState(state json.RawMessage) error
+	SetState(state json.RawMessage, currentPath string) error
 	GetState() (json.RawMessage, error)
 }
 ```
@@ -70,16 +79,7 @@ return values set. The function only needs to generate the function body. To gen
 advised to write the code first into a dummy function and use this amazing tool https://astextract.lu4p.xyz/ 
 to convert it to ast-code.
 
-### Build-in TypeCheckers
-
-
-| Name                    | Type      | Settings                                                        | Description                                                                                                                                                                                                                                                       |
-|-------------------------|-----------|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| json2go.UUIDTypeChecker | uuid.UUID |                                                                 | Checks if values could be represented as `uuid.UUID` using `github.com/google/uuid` as a dependency                                                                                                                                                               |
-| json2go.TimeTypeChecker | time.Time | `IgnoreYearOnlyStrings` Set to true, to ignore year only values | Checks if values can be represented as `time.Time` uses `github.com/araddon/dateparse` to check for valid time types.                                                                                                                                             |
-| json2go.IntTypeChecker  | int       |                                                                 | Checks if the given values can be represented as integers. Be careful with APIs that use the dot notation, to signal a float response, despite the values being valid integer ones. The information is lost during the process. Only the pure value plays a role. |
-
-The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here: 
+The build-in time adjuster is a good starting point for your own Typeadjuster, and could be found here:
 [typeDeterminers.go](https://github.com/Lemonn/JSON2Go/blob/ce85a6cc8abf255c8c8733ddbcb10d3dc40fa7a1/typeDeterminers.go#L15)
 
 ## JSON-Marshaller generation

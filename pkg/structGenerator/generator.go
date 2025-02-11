@@ -32,7 +32,7 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 	}
 }
 
-func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction, generateJSONMarshaller bool) (map[string]*fieldData.FieldData, error) {
+func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction, generateJSONMarshaller bool) (*fieldData.Metadata, error) {
 	s.file = file
 	var JsonData interface{}
 	var err error
@@ -77,7 +77,11 @@ func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, 
 
 	}
 
-	return s.data, nil
+	return &fieldData.Metadata{
+		TotalSampleCount: 1,
+		LastRunTimestamp: s.startTime.Unix(),
+		Data:             s.data,
+	}, nil
 }
 
 func (s *StructGenerator) packType(fields []*ast.Field, structName string) error {

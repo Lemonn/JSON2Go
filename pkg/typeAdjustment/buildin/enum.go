@@ -25,7 +25,7 @@ type EnumTypeChecker struct {
 	state          *EnumTypeCheckerState
 }
 
-func NewEnumTypeChecker(minFilesSeen int, maxFieldCount int) *EnumTypeChecker {
+func NewEnumTypeChecker(minFilesSeen int, minFieldCount int, maxFieldCount int) *EnumTypeChecker {
 	return &EnumTypeChecker{
 		minFilesSeen:   minFilesSeen,
 		maxFieldCount:  maxFieldCount,
@@ -58,6 +58,10 @@ func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]string) typeA
 		}
 	} else if e.state.FieldOrder == nil {
 		e.state.FieldOrder = make(map[string]int)
+	}
+
+	if len(e.state.FieldOrder) == 0 {
+		e.state.FieldOrder["InvalidEnumValue"] = 0
 	}
 
 	e.seenValues = []string{}
@@ -196,6 +200,7 @@ func (e *EnumTypeChecker) GetName() string {
 
 func (e *EnumTypeChecker) SetState(state json.RawMessage, currentPath string) error {
 	e.currentPath = currentPath
+	e.state = nil
 	if state != nil {
 		err := json.Unmarshal(state, e.state)
 		if err != nil {
@@ -264,14 +269,6 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 					})
 				}
 			}
-
-			specs = append(specs, &ast.ValueSpec{
-				Names: []*ast.Ident{
-					&ast.Ident{
-						Name: enumName + "InvalidEnumValue",
-					},
-				},
-			})
 			return specs
 		}(),
 	})
