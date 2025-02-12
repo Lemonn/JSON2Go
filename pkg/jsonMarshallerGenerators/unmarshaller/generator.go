@@ -311,6 +311,8 @@ func (g *Generator) Generate(file *ast.File) error {
 						},
 					},
 				})
+				addGetAllErrorsOfTypeFunction(file)
+				addCheckForFirstErrorNotOfTypeTFunction(file)
 			}
 
 			AstUtils.AddMissingImports(file, imports)
