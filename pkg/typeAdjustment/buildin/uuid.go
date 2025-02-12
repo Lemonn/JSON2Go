@@ -29,15 +29,15 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
+func (u *UUIDTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
 	var err error
 	for value := range seenValues {
 		_, err = uuid.Parse(value)
 		if err != nil {
-			return typeAdjustment.StateFailed
+			return typeAdjustment.StateFailed, nil
 		}
 	}
-	return typeAdjustment.StateApplicable
+	return typeAdjustment.StateApplicable, nil
 }
 
 func (u *UUIDTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {

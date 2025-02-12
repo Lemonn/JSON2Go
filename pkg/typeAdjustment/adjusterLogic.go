@@ -1,8 +1,10 @@
 package typeAdjustment
 
 import (
+	"errors"
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"reflect"
@@ -84,7 +86,55 @@ func (ta *TypeAdjuster) AdjustTypes(registeredTypeCheckers []TypeDeterminationFu
 func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminationFunction, path string, name string, e *ast.Expr) ([]string, error) {
 	var requiredImports []string
 	var typeReplaced bool
+
+	json2GoTag := ta.data[path]
+	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 || json2GoTag.BaseType != nil {
+		return nil, nil
+	}
+
+	// If a checker is active from a previous run, prefer this checker over all others. Only if this one fails,
+	// run the others
+	if json2GoTag.NameOfActiveTypeAdjuster != nil {
+		for _, checker := range registeredTypeCheckers {
+			if checker.GetName() == *json2GoTag.NameOfActiveTypeAdjuster {
+				runCheckerState, imp, err := ta.runChecker(checker, json2GoTag, path, e, typeReplaced)
+				if err != nil {
+					return nil, err
+				}
+				if runCheckerState == StateApplicable {
+					requiredImports = append(requiredImports, imp...)
+					typeReplaced = true
+					break
+				} else if runCheckerState == StateFailed {
+					//TODO log
+				}
+			}
+		}
+	}
+
+	// Is always run. But when typeReplaced is set. It only serves the purpose to populate the CheckedNonMatchingTypes
+	// field of FieldData.
+	for _, checker := range registeredTypeCheckers {
+		runCheckerState, i, err := ta.runChecker(checker, json2GoTag, path, e, typeReplaced)
+		if err != nil {
+			return nil, err
+		}
+		if runCheckerState == StateApplicable {
+			typeReplaced = true
+			requiredImports = append(requiredImports, i...)
+
+		} else if runCheckerState == StateUndecided {
+			typeReplaced = true
+			//TODO log this
+		}
+	}
+	return requiredImports, nil
+}
+
+func (ta *TypeAdjuster) runChecker(checker TypeDeterminationFunction, fData *fieldData.FieldData, path string, e *ast.Expr, runCheckOnly bool) (State, []string, error) {
 	var err error
+	var requiredImports []string
+	baseName := strings.ReplaceAll(path, ".", "")
 
 	//Get input type
 	var originalType string
@@ -92,7 +142,7 @@ func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminati
 
 	expr, err := utils.WalkExpressions(e)
 	if err != nil {
-		return nil, err
+		return StateFailed, nil, err
 	}
 	switch e := (*expr).(type) {
 	case *ast.SelectorExpr:
@@ -106,43 +156,47 @@ func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminati
 		exp = expr
 	}
 
-	baseName := strings.ReplaceAll(path, ".", "")
-	json2GoTag := ta.data[path]
-	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 || json2GoTag.BaseType != nil {
-		return nil, nil
+	// Ignore imperviously failed checkers
+	if fData.SeenValues != nil {
+		if _, ok := fData.CheckedNonMatchingTypes[checker.GetName()]; ok {
+			return StateFailed, nil, nil
+		}
 	}
 
-	for _, checker := range registeredTypeCheckers {
-		if json2GoTag.SeenValues != nil {
-			if _, ok := json2GoTag.SeenValues[checker.GetName()]; ok {
-				continue
-			}
-		}
-		checker.SetFile(ta.file)
-		err = checker.SetState(json2GoTag.TypeAdjusterData, path)
-		if err != nil {
-			return nil, err
-		}
-		if state := checker.CouldTypeBeApplied(json2GoTag.SeenValues); state == StateApplicable && !typeReplaced {
-			typeReplaced = true
-			ri, err := ta.replaceType(json2GoTag, baseName, originalType, checker, exp, requiredImports)
-			if err != nil {
-				return nil, err
-			}
-			requiredImports = append(requiredImports, ri...)
-		} else if state == StateUndecided {
-			continue
+	//Init checker
+	checker.SetFile(ta.file)
+	err = checker.SetState(fData.TypeAdjusterData, path)
+	if err != nil {
+		return StateFailed, nil, err
+	}
+
+	state, err := checker.CouldTypeBeApplied(fData.SeenValues)
+
+	if err != nil {
+		var incompatibleCustomTypeError *j2gErrors.IncompatibleCustomTypeError
+		if errors.As(err, &incompatibleCustomTypeError) {
+			fData.Error = incompatibleCustomTypeError
 		} else {
-			if json2GoTag.CheckedNonMatchingTypes == nil {
-				json2GoTag.CheckedNonMatchingTypes = map[string]int64{}
-			}
-			json2GoTag.CheckedNonMatchingTypes[checker.GetName()] = time.Now().Unix()
-			if err != nil {
-				return nil, err
-			}
+			return StateUndecided, nil, err
 		}
 	}
-	return requiredImports, nil
+
+	if state == StateApplicable && !runCheckOnly {
+		runCheckOnly = true
+		ri, err := ta.replaceType(fData, baseName, originalType, checker, exp, requiredImports)
+		if err != nil {
+			return state, nil, err
+		}
+		requiredImports = append(requiredImports, ri...)
+	} else if state == StateUndecided {
+		return state, nil, nil
+	} else {
+		if fData.CheckedNonMatchingTypes == nil {
+			fData.CheckedNonMatchingTypes = map[string]int64{}
+		}
+		fData.CheckedNonMatchingTypes[checker.GetName()] = time.Now().Unix()
+	}
+	return state, requiredImports, nil
 }
 
 // TODO look if all params are really needed

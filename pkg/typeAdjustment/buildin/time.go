@@ -2,6 +2,9 @@ package buildin
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/araddon/dateparse"
@@ -56,18 +59,32 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 	}
 }
 
-func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
+func (t *TimeTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
 	var err error
+	layoutStrings := make(map[string]struct{})
+	var newLayoutString string
 	for value := range seenValues {
-		t.state.LayoutString, err = dateparse.ParseFormat(value)
-		if t.ignoreYearOnlyStrings && t.state.LayoutString == "2006" {
-			return typeAdjustment.StateFailed
-		}
+		newLayoutString, err = dateparse.ParseFormat(value)
 		if err != nil {
-			return typeAdjustment.StateFailed
+			return typeAdjustment.StateFailed, nil
+		} else if t.ignoreYearOnlyStrings && t.state.LayoutString == "2006" {
+			return typeAdjustment.StateFailed, nil
+		} else {
+			layoutStrings[newLayoutString] = struct{}{}
 		}
 	}
-	return typeAdjustment.StateApplicable
+	if len(layoutStrings) > 1 {
+		return typeAdjustment.StateFailed, nil
+	} else if t.state == nil || t.state.LayoutString == "" {
+		t.state.LayoutString = newLayoutString
+	} else if _, ok := layoutStrings[t.state.LayoutString]; !ok {
+		return typeAdjustment.StateApplicable, &j2gErrors.IncompatibleCustomTypeError{
+			Timestamp: 0,
+			Err: errors.New(fmt.Sprintf("incompatible time strings. Old string: %s, New string: %s",
+				t.state.LayoutString, newLayoutString)),
+		}
+	}
+	return typeAdjustment.StateApplicable, nil
 }
 
 func (t *TimeTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {

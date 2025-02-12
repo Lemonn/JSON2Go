@@ -48,16 +48,16 @@ type EnumTypeCheckerState struct {
 	FieldOrder map[string]int
 }
 
-func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
+func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
 	if e.totalFilesSeen < e.minFilesSeen {
-		return typeAdjustment.StateUndecided
+		return typeAdjustment.StateUndecided, nil
 	} else if len(seenValues) > e.maxFieldCount || len(seenValues) < e.minFieldCount {
-		return typeAdjustment.StateFailed
+		return typeAdjustment.StateFailed, nil
 	}
 	var fieldType string
 	for _, valueData := range seenValues {
 		if valueData.Type != "string" {
-			return typeAdjustment.StateFailed
+			return typeAdjustment.StateFailed, nil
 		} else if fieldType == "" {
 			fieldType = valueData.Type
 		}
@@ -79,7 +79,7 @@ func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.Va
 	if e.state != nil && e.state.FieldOrder != nil {
 		for fieldValue, fieldValues := range seenValues {
 			if e.minTimesSeen >= fieldValues.Count {
-				return typeAdjustment.StateUndecided
+				return typeAdjustment.StateUndecided, nil
 			}
 			if _, ok := e.state.FieldOrder[fieldValue]; !ok {
 				e.state.FieldOrder[fieldValue] = len(e.state.FieldOrder)
@@ -90,7 +90,7 @@ func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.Va
 	for s, i := range e.state.FieldOrder {
 		e.seenValues[i] = s
 	}
-	return typeAdjustment.StateApplicable
+	return typeAdjustment.StateApplicable, nil
 }
 
 func (e *EnumTypeChecker) GetType() ast.Expr {

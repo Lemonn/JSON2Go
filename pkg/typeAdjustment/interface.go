@@ -7,7 +7,7 @@ import (
 )
 
 type TypeDeterminationFunction interface {
-	CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) State
+	CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (State, error)
 	GetType() ast.Expr
 	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
 	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)

@@ -22,14 +22,14 @@ func (i *IntTypeChecker) GetState() (json.RawMessage, error) {
 	return nil, nil
 }
 
-func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) typeAdjustment.State {
+func (i *IntTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
 	for value := range seenValues {
 		_, err := strconv.Atoi(value)
 		if err != nil {
-			return typeAdjustment.StateFailed
+			return typeAdjustment.StateFailed, nil
 		}
 	}
-	return typeAdjustment.StateApplicable
+	return typeAdjustment.StateApplicable, nil
 }
 
 func (i *IntTypeChecker) GetType() ast.Expr {

@@ -8,7 +8,7 @@ type IncompatibleCustomTypeError struct {
 	Err       error
 }
 
-func (i IncompatibleCustomTypeError) Error() string {
+func (i *IncompatibleCustomTypeError) Error() string {
 	//TODO implement me
 	panic("implement me")
 }
