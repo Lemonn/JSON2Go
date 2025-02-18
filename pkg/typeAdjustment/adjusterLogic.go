@@ -13,12 +13,13 @@ import (
 )
 
 type TypeAdjuster struct {
-	data map[string]*fieldData.FieldData
-	file *ast.File
+	data       map[string]*fieldData.FieldData
+	inputFile  *ast.File
+	outputFile *ast.File
 }
 
-func NewTypeAdjuster(file *ast.File, data map[string]*fieldData.FieldData) *TypeAdjuster {
-	return &TypeAdjuster{data: data, file: file}
+func NewTypeAdjuster(data map[string]*fieldData.FieldData, inputFile, outputFile *ast.File) *TypeAdjuster {
+	return &TypeAdjuster{data: data, inputFile: inputFile, outputFile: outputFile}
 }
 
 // AdjustTypes Goes through all fields and looks at the json2go FieldData, to determine if there's a better suiting type
@@ -30,27 +31,37 @@ func (ta *TypeAdjuster) AdjustTypes(registeredTypeCheckers []TypeDeterminationFu
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
 	var requiredImports []string
-	AstUtils.SearchNodes(ta.file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+	AstUtils.SearchNodes(ta.inputFile, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if _, ok := (*n).(*ast.StructType); ok {
 			return true
-		} else if _, ok := (*n).(*ast.ArrayType); ok {
-			return true
+		} else if _, ok := (*n).(*ast.ArrayType); ok && len(parents) > 0 {
+			if _, ok := (*parents[0]).(*ast.ArrayType); !ok {
+				return true
+			}
 		}
 		return false
 	}, &completed)
 	for _, node := range foundNodes {
-
 		var path string
+		var ignore bool
 		for _, parent := range node.Parents {
 			if v, ok := (*parent).(*ast.TypeSpec); ok {
+				//TODO ignore nested type specs, such as inside an function
 				path += v.Name.Name
 				break
 			} else if v, ok := (*parent).(*ast.Field); ok {
 				path += "." + v.Names[0].Name
 			} else if _, ok := (*parent).(*ast.StructType); ok {
 				//Ignore nested structs
-				continue
+				ignore = true
+				break
+			} else if _, ok := (*parent).(*ast.FuncType); ok {
+				ignore = true
+				break
 			}
+		}
+		if ignore {
+			continue
 		}
 
 		switch t := (*node.Node).(type) {
@@ -79,7 +90,7 @@ func (ta *TypeAdjuster) AdjustTypes(registeredTypeCheckers []TypeDeterminationFu
 		}
 
 	}
-	AstUtils.AddMissingImports(ta.file, requiredImports)
+	AstUtils.AddMissingImports(ta.outputFile, requiredImports)
 	return nil
 }
 
@@ -88,7 +99,7 @@ func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminati
 	var typeReplaced bool
 
 	json2GoTag := ta.data[path]
-	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 || json2GoTag.BaseType != nil {
+	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 {
 		return nil, nil
 	}
 
@@ -164,7 +175,7 @@ func (ta *TypeAdjuster) runChecker(checker TypeDeterminationFunction, fData *fie
 	}
 
 	//Init checker
-	checker.SetFile(ta.file)
+	checker.SetFile(ta.outputFile)
 	err = checker.SetState(fData.TypeAdjusterData, path)
 	if err != nil {
 		return StateFailed, nil, err
@@ -288,8 +299,8 @@ func (ta *TypeAdjuster) replaceType(json2GoTag *fieldData.FieldData, baseName st
 	if err != nil {
 		return nil, err
 	}
-	ta.file.Decls = append(ta.file.Decls, fromTypeFunction)
-	ta.file.Decls = append(ta.file.Decls, toTypeFunction)
+	ta.outputFile.Decls = append(ta.outputFile.Decls, fromTypeFunction)
+	ta.outputFile.Decls = append(ta.outputFile.Decls, toTypeFunction)
 	*exp = checker.GetType()
 	json2GoTag.BaseType = &originalType
 	json2GoTag.TypeAdjusterData, err = checker.GetState()

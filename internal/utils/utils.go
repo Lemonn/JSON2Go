@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/iancoleman/strcase"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"reflect"
 	"strconv"
@@ -308,4 +309,14 @@ func GenerateTypeWhitInitializedArrays(str *ast.StructType) *ast.AssignStmt {
 			},
 		},
 	}
+}
+
+func GetEmptyFile(packageName string) *ast.File {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", "package "+packageName, parser.ParseComments)
+	if err != nil {
+		panic(err)
+	}
+	file.Decls = []ast.Decl{}
+	return file
 }

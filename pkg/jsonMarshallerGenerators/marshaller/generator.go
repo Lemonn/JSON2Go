@@ -11,17 +11,19 @@ import (
 )
 
 type Generator struct {
-	data map[string]*fieldData.FieldData
+	data    map[string]*fieldData.FieldData
+	inFile  *ast.File
+	outFile *ast.File
 }
 
-func NewGenerator(data map[string]*fieldData.FieldData) *Generator {
-	return &Generator{data: data}
+func NewGenerator(data map[string]*fieldData.FieldData, inFile, outFile *ast.File) *Generator {
+	return &Generator{data: data, inFile: inFile, outFile: outFile}
 }
 
-func (g *Generator) Generate(file *ast.File) error {
+func (g *Generator) Generate() error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
-	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+	AstUtils.SearchNodes(g.inFile, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if _, ok := (*n).(*ast.StructType); ok && len(parents) > 0 {
 			return true
 		} else if _, ok := (*n).(*ast.Ident); ok && len(parents) > 0 {
@@ -71,19 +73,19 @@ func (g *Generator) Generate(file *ast.File) error {
 			if err != nil {
 				return err
 			}
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.inFile, imports)
 		case *ast.Ident:
 			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
 			if err != nil {
 				return err
 			}
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.inFile, imports)
 		case *ast.SelectorExpr:
 			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)
 			if err != nil {
 				return err
 			}
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.inFile, imports)
 		default:
 			return errors.New(fmt.Sprintf("unkown type: %s", reflect.TypeOf(*node.Node).String()))
 		}
@@ -93,7 +95,7 @@ func (g *Generator) Generate(file *ast.File) error {
 		}
 
 		//Add Marshall function to file
-		file.Decls = append(file.Decls, &ast.FuncDecl{
+		g.outFile.Decls = append(g.outFile.Decls, &ast.FuncDecl{
 			Recv: &ast.FieldList{
 				List: []*ast.Field{
 					{

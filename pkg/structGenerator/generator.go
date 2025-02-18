@@ -32,6 +32,76 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 	}
 }
 
+func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, path string, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction) error {
+	var JsonData interface{}
+	var err error
+	structFile := utils.GetEmptyFile(packageName)
+	s.file = structFile
+	err = json.Unmarshal(jsonData, &JsonData)
+	if err != nil {
+		return err
+	}
+	fields, err := s.codeGen(JsonData, structName)
+	if err != nil {
+		return err
+	}
+	err = s.packType(fields, structName)
+	if err != nil {
+		return err
+	}
+
+	AstUtils.UnnestStruct(nil, s.file)
+	s.renamePaths()
+	s.attachJsonTags()
+
+	typeAdjusterFile := utils.GetEmptyFile(packageName)
+	if typeAdjusters != nil && len(typeAdjusters) > 0 {
+		ta := typeAdjustment.NewTypeAdjuster(s.data, s.file, typeAdjusterFile)
+		err = ta.AdjustTypes(typeAdjusters, true)
+		if err != nil {
+			return err
+		}
+	}
+	output := bytes.NewBuffer([]byte{})
+	if err = printer.Fprint(output, token.NewFileSet(), typeAdjusterFile); err != nil {
+		return err
+	}
+	err = os.WriteFile(path+"/typeAdjusters.go", output.Bytes(), 0666)
+	if err != nil {
+		return err
+	}
+
+	marshallFile := utils.GetEmptyFile(packageName)
+	marshallGen := marshaller.NewGenerator(s.data, s.file, marshallFile)
+	err = marshallGen.Generate()
+	if err != nil {
+		return err
+	}
+
+	output = bytes.NewBuffer([]byte{})
+	if err = printer.Fprint(output, token.NewFileSet(), marshallFile); err != nil {
+		return err
+	}
+
+	c, err := format.Source(output.Bytes())
+	err = os.WriteFile(path+"/marshall.go", c, 0666)
+	if err != nil {
+		return err
+	}
+
+	output = bytes.NewBuffer([]byte{})
+	if err = printer.Fprint(output, token.NewFileSet(), s.file); err != nil {
+		return err
+	}
+	c, err = format.Source(output.Bytes())
+	err = os.WriteFile(path+"/struct.go", c, 0666)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction, generateJSONMarshaller bool) (*fieldData.Metadata, error) {
 	s.file = file
 	var JsonData interface{}
