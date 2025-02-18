@@ -28,17 +28,7 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) 
 							Name: "lt",
 						},
 					},
-					Type: func() ast.Expr {
-						ident := &ast.Ident{Name: *fData.BaseType}
-						if levelOfArrays == 0 {
-							return ident
-						}
-						var oe ast.Expr
-						var ie *ast.Expr
-						ie, oe = utils.GeneratedNestedArray(levelOfArrays, ie, oe)
-						(*ie).(*ast.ArrayType).Elt = ident
-						return oe
-					}(),
+					Type: utils.GeneratedNestedArray(levelOfArrays, utils.GetTypeFromBaseType(*fData.BaseType)),
 				},
 			},
 		},
@@ -61,17 +51,7 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, name string) 
 						Args: []ast.Expr{
 							g.generateIndexing(i),
 							&ast.CompositeLit{
-								Type: func() ast.Expr {
-									ident := &ast.Ident{Name: *fData.BaseType}
-									if levelOfArrays-i == 0 {
-										return ident
-									}
-									var oe ast.Expr
-									var ie *ast.Expr
-									ie, oe = utils.GeneratedNestedArray(levelOfArrays-i, ie, oe)
-									(*ie).(*ast.ArrayType).Elt = ident
-									return oe
-								}(),
+								Type: utils.GeneratedNestedArray(levelOfArrays, utils.GetTypeFromBaseType(*fData.BaseType)),
 							},
 						},
 					},

@@ -7,6 +7,7 @@ import (
 	errors2 "github.com/Lemonn/JSON2Go/pkg/errors"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 type Metadata struct {
@@ -46,15 +47,19 @@ type FieldData struct {
 	RequiredField bool `json:"requiredField,omitempty"`
 	// ExcludedTypeCheckers List of TypeChecker names that should not be run on this field.
 	ExcludedTypeCheckers []string `json:"excludedTypeCheckers,omitempty"`
-	// Error Holds a error of type FieldPresenceChangeError, errors.IncompatibleCustomTypeError or errors.TypeChangeError.
+	// Error Holds an error of type FieldPresenceChangeError, errors.IncompatibleCustomTypeError or errors.TypeChangeError.
 	// It's up to the caller, what to do with this. errors.IncompatibleCustomTypeError or TypeChangeError
 	// indicate a major version change. Should be set to nil, before next run!
 	Error error `json:"error,omitempty"`
+	// LevelOfArrays stores the amount of arrays the type is nested in
+	LevelOfArrays int `json:"levelOfArrays,omitempty"`
 }
 
 type ValueData struct {
-	Type  string `json:"type,omitempty"`
-	Count int    `json:"count,omitempty"`
+	Type               string `json:"type,omitempty"`
+	Count              int    `json:"count,omitempty"`
+	FirstSeenTimestamp int64  `json:"firstSeenTimestamp,omitempty"`
+	LastSeenTimestamp  int64  `json:"lastSeenTimestamp,omitempty"`
 }
 
 // ParseFunctions Holds the names of the parse functions
@@ -194,6 +199,13 @@ func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
 		jNew.TypeAdjusterData = j1.TypeAdjusterData
 	}
 
+	//Combine LevelOfArrays
+	if j.LevelOfArrays > j1.LevelOfArrays {
+		jNew.LevelOfArrays = j.LevelOfArrays
+	} else {
+		jNew.LevelOfArrays = j1.LevelOfArrays
+	}
+
 	return &jNew, nil
 }
 
@@ -210,10 +222,25 @@ func (v *ValueData) Combine(v1 *ValueData) (*ValueData, error) {
 	}
 	//Combine Count
 	vNew.Count = v.Count + v1.Count
+
+	//Combine FirstSeenTimestamp
+	if v.FirstSeenTimestamp < v1.FirstSeenTimestamp {
+		vNew.FirstSeenTimestamp = v.FirstSeenTimestamp
+	} else {
+		vNew.FirstSeenTimestamp = v1.FirstSeenTimestamp
+	}
+
+	//Combine LastSeenTimestamp
+	if v.LastSeenTimestamp > v1.LastSeenTimestamp {
+		vNew.LastSeenTimestamp = v.LastSeenTimestamp
+	} else {
+		vNew.LastSeenTimestamp = v1.LastSeenTimestamp
+	}
+
 	return &vNew, nil
 }
 
-func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
+func NewTagFromFieldData(startTime time.Time, fieldData interface{}) (*FieldData, error) {
 	var fieldValue string
 	switch t := fieldData.(type) {
 	case float64:
@@ -231,8 +258,10 @@ func NewTagFromFieldData(fieldData interface{}) (*FieldData, error) {
 
 	return &FieldData{
 		SeenValues: map[string]*ValueData{fieldValue: {
-			Type:  reflect.TypeOf(fieldData).String(),
-			Count: 1,
+			Type:               reflect.TypeOf(fieldData).String(),
+			Count:              1,
+			LastSeenTimestamp:  startTime.Unix(),
+			FirstSeenTimestamp: startTime.Unix(),
 		}},
 	}, nil
 }
@@ -248,4 +277,16 @@ func SetOrCombineFieldData(data *FieldData, tags map[string]*FieldData, path str
 		tags[path] = data
 	}
 	return nil
+}
+
+func IncreaseLevelOfArray(tags map[string]*FieldData, path string) int {
+	var oldLevel int
+	if _, ok := tags[path]; ok {
+		oldLevel = tags[path].LevelOfArrays
+		tags[path].LevelOfArrays++
+	} else {
+		oldLevel = 1
+		tags[path] = &FieldData{LevelOfArrays: 1}
+	}
+	return oldLevel
 }
