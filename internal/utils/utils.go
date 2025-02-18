@@ -169,9 +169,15 @@ func GenerateAssignStmt(levelOfArraysLeft, levelOfArraysRight int, leftSide, rig
 		},
 		Tok: token.ASSIGN,
 		Rhs: []ast.Expr{
-			&ast.CompositeLit{
-				Type: GeneratedNestedArray(levelOfArraysRight, rightSide),
-			},
+			func() ast.Expr {
+				if levelOfArraysRight == 0 {
+					return GeneratedNestedArray(levelOfArraysRight, rightSide)
+				} else {
+					return &ast.CompositeLit{
+						Type: GeneratedNestedArray(levelOfArraysRight, rightSide),
+					}
+				}
+			}(),
 		},
 	}
 

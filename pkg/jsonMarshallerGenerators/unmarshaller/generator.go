@@ -317,10 +317,10 @@ func (g *Generator) Generate(file *ast.File) error {
 
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.Ident:
-			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.Ident).Name, path)
+			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.Ident), path)
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.SelectorExpr:
-			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.SelectorExpr).X.(*ast.Ident).Name+"."+(*node.Node).(*ast.SelectorExpr).Sel.Name, path)
+			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.SelectorExpr), path)
 			AstUtils.AddMissingImports(file, imports)
 		default:
 			return errors.New(fmt.Sprintf("unkown type: %s", reflect.TypeOf(*node.Node).String()))

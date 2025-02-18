@@ -71,7 +71,6 @@ func (g *Generator) Generate(file *ast.File) error {
 			if err != nil {
 				return err
 			}
-
 			AstUtils.AddMissingImports(file, imports)
 		case *ast.Ident:
 			stmts, imports, err = g.arrayGenerator(path, levelOfArrays, name)

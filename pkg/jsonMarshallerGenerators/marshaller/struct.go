@@ -27,7 +27,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{
-						&ast.Ident{
+						{
 							Name: "err",
 						},
 					},
@@ -177,7 +177,22 @@ func (g *Generator) handleField(stmts *[]ast.Stmt, structName string, fieldName 
 	})
 }
 
-func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, name string, fData *fieldData.FieldData, structName string, fieldType ast.Expr) {
+func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, fieldName string, fData *fieldData.FieldData, structName string, fieldType ast.Expr) {
+	var fieldNameExpr ast.Expr
+	var structFieldNameIndexExpr ast.Expr
+
+	if fieldName == "" {
+		fieldNameExpr = &ast.Ident{Name: "lt"}
+	} else {
+		fieldNameExpr = &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: fieldName}}
+	}
+
+	if fieldName == "" {
+		structFieldNameIndexExpr = fieldType
+	} else {
+		structFieldNameIndexExpr = &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}
+	}
+
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -185,7 +200,7 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, name 
 				Specs: []ast.Spec{
 					&ast.ValueSpec{
 						Names: []*ast.Ident{
-							&ast.Ident{
+							{
 								Name: "result",
 							},
 						},
@@ -244,9 +259,10 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, name 
 				},
 			},
 		},
-		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: name}}, &ast.Ident{Name: "result"}, "index"),
+		utils.GenerateAppendStatement(levelOfArrays-1, 0, fieldNameExpr, &ast.Ident{Name: "result"}, "index"),
 	}
-	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: name}}, &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: name}}, &ast.Ident{Name: "string"}))
+	fmt.Println(*fData.BaseType)
+	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, utils.GetTypeFromBaseType(*fData.BaseType)))
 	return
 }
 

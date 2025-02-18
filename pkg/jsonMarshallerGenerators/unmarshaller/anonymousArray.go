@@ -1,75 +1,124 @@
 package unmarshaller
 
 import (
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"go/ast"
 	"go/token"
-	"reflect"
-	"strconv"
 	"unicode"
 )
 
 // Handles the case where we have an array of non struct type
-func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType string, name string) ([]ast.Stmt, []string) {
+func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType ast.Expr, name string) ([]ast.Stmt, []string) {
 	var stmts []ast.Stmt
-
-	lit := g.data[path]
-	if lit == nil || lit.BaseType == nil {
+	fData := g.data[path]
+	if fData == nil || fData.BaseType == nil {
 		return stmts, []string{}
 	}
 
-	var OuterExpr ast.Expr
-	var InnerExpr *ast.Expr
-
-	//Generate nested array for local type
-	InnerExpr, OuterExpr = GeneratedNestedArray(levelOfArrays, InnerExpr, OuterExpr)
-
-	//Set type of local type
-	(*InnerExpr).(*ast.ArrayType).Elt = &ast.Ident{
-		Name: *lit.BaseType,
-	}
-
-	//Append local type to file
-	stmts = append(stmts, &ast.DeclStmt{
-		Decl: &ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: "localType",
+	//Content of the nested range statement
+	innerStmts := []ast.Stmt{
+		&ast.DeclStmt{
+			Decl: &ast.GenDecl{
+				Tok: token.VAR,
+				Specs: []ast.Spec{
+					&ast.ValueSpec{
+						Names: []*ast.Ident{
+							{
+								Name: "result",
+							},
+						},
+						Type: fieldType,
 					},
-					Type: OuterExpr,
 				},
 			},
 		},
-	})
+		&ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.Ident{
+					Name: "result",
+				},
+				&ast.Ident{
+					Name: "err",
+				},
+			},
+			Tok: token.ASSIGN,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.Ident{
+						Name: fData.ParseFunctions.FromTypeParseFunction,
+					},
+					Args: []ast.Expr{
+						&ast.Ident{
+							Name: "baseValue",
+						},
+					},
+				},
+			},
+		},
+		&ast.IfStmt{
+			Cond: &ast.BinaryExpr{
+				X: &ast.Ident{
+					Name: "err",
+				},
+				Op: token.NEQ,
+				Y: &ast.Ident{
+					Name: "nil",
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.Ident{
+								Name: "err",
+							},
+						},
+					},
+				},
+			},
+		},
+		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}, &ast.Ident{Name: "result"}, "index"),
+	}
 
-	//Append var lt localType to file
 	stmts = append(stmts, &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
 					Names: []*ast.Ident{
-						&ast.Ident{
+						{
 							Name: "lt",
 						},
 					},
+					Type: utils.GeneratedNestedArray(levelOfArrays, utils.GetTypeFromBaseType(*fData.BaseType)),
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						{
+							Name: "err",
+						},
+					},
 					Type: &ast.Ident{
-						Name: "localType",
+						Name: "error",
 					},
 				},
 			},
 		},
 	})
-
-	//Append json unmarshall call to file
 	stmts = append(stmts, &ast.AssignStmt{
 		Lhs: []ast.Expr{
 			&ast.Ident{
 				Name: "err",
 			},
 		},
-		Tok: token.DEFINE,
+		Tok: token.ASSIGN,
 		Rhs: []ast.Expr{
 			&ast.CallExpr{
 				Fun: &ast.SelectorExpr{
@@ -94,8 +143,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 			},
 		},
 	})
-
-	//Append json error handler to file
 	stmts = append(stmts, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.Ident{
@@ -118,295 +165,7 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 			},
 		},
 	})
-
-	//Generate nested for loops
-	var OuterStmt ast.Stmt
-	var InnerStmt *ast.Stmt
-	for i := range levelOfArrays {
-		if InnerStmt != nil && reflect.TypeOf(*InnerStmt) == reflect.TypeOf(&ast.RangeStmt{}) {
-			//if i != levelOfArrays-1 {
-			(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.AssignStmt{
-				Lhs: []ast.Expr{
-					func() ast.Expr {
-						var oe ast.Expr
-						var ie *ast.Expr
-						li := 0
-						for range i - 1 {
-							if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
-								(*ie).(*ast.IndexExpr).X = &ast.IndexExpr{}
-								(*ie).(*ast.IndexExpr).Index = &ast.Ident{Name: "i" + strconv.Itoa(i-li-1)}
-								*ie = (*ie).(*ast.IndexExpr).X
-							} else {
-								var k ast.Expr
-								k = &ast.IndexExpr{}
-								ie = &k
-								oe = k
-							}
-							li++
-
-						}
-						if i > 1 {
-							(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-								Name: "i" + strconv.Itoa(i-li-1),
-							}
-							(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
-								X: &ast.StarExpr{
-									X: &ast.Ident{
-										Name: string(unicode.ToLower([]rune(name)[0])),
-									},
-								},
-							}
-						} else {
-							return &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}
-						}
-						return oe
-					}(),
-				},
-				Tok: token.ASSIGN,
-				Rhs: []ast.Expr{
-					&ast.CallExpr{
-						Fun: &ast.Ident{
-							Name: "append",
-						},
-						Args: []ast.Expr{
-							func() ast.Expr {
-								var oe ast.Expr
-								var ie *ast.Expr
-								li := 0
-								for range i - 1 {
-									if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
-										(*ie).(*ast.IndexExpr).X = &ast.IndexExpr{}
-										(*ie).(*ast.IndexExpr).Index = &ast.Ident{Name: "i" + strconv.Itoa(i-li-1)}
-										*ie = (*ie).(*ast.IndexExpr).X
-									} else {
-										var k ast.Expr
-										k = &ast.IndexExpr{}
-										ie = &k
-										oe = k
-									}
-									li++
-
-								}
-								if i > 1 {
-									(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-										Name: "i" + strconv.Itoa(i-li-1),
-									}
-									(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
-										X: &ast.StarExpr{
-											X: &ast.Ident{
-												Name: string(unicode.ToLower([]rune(name)[0])),
-											},
-										},
-									}
-								} else {
-									return &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}
-								}
-								return oe
-							}(),
-							&ast.CompositeLit{
-								Type: func() ast.Expr {
-									ident := &ast.Ident{Name: fieldType}
-									if levelOfArrays-i == 0 {
-										return ident
-									}
-									var oe ast.Expr
-									var ie *ast.Expr
-									ie, oe = GeneratedNestedArray(levelOfArrays-i, ie, oe)
-									(*ie).(*ast.ArrayType).Elt = ident
-									return oe
-								}(),
-							},
-						},
-					},
-				},
-			})
-			//}
-			(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.RangeStmt{
-				Key: &ast.Ident{
-					Name: func() string {
-						if i == levelOfArrays-1 {
-							return "_"
-						}
-						return "i" + strconv.Itoa(i)
-					}(),
-				},
-				Value: &ast.Ident{
-					Name: "level" + strconv.Itoa(i),
-				},
-				Tok: token.DEFINE,
-				X: &ast.Ident{
-					Name: "level" + strconv.Itoa(i-1),
-				},
-				Body: &ast.BlockStmt{},
-			})
-			*InnerStmt = (*InnerStmt).(*ast.RangeStmt).Body.List[len((*InnerStmt).(*ast.RangeStmt).Body.List)-1]
-		} else {
-			var k ast.Stmt
-			k = &ast.RangeStmt{
-				Key: &ast.Ident{
-					Name: func() string {
-						if levelOfArrays == 1 {
-							return "_"
-						}
-						return "i" + strconv.Itoa(i)
-					}(),
-				},
-				Value: &ast.Ident{
-					Name: "level" + strconv.Itoa(i),
-				},
-				Tok: token.DEFINE,
-				X: &ast.Ident{
-					Name: "lt",
-				},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{},
-				},
-			}
-			InnerStmt = &k
-			OuterStmt = k
-		}
-	}
-
-	if levelOfArrays > 0 {
-		(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.AssignStmt{
-			Lhs: []ast.Expr{
-				&ast.Ident{
-					Name: "value",
-				},
-				&ast.Ident{
-					Name: "err",
-				},
-			},
-			Tok: token.DEFINE,
-			Rhs: []ast.Expr{
-				&ast.CallExpr{
-					Fun: &ast.Ident{
-						Name: "fromRRR",
-					},
-					Args: []ast.Expr{
-						&ast.Ident{
-							Name: "level" + strconv.Itoa(levelOfArrays-1),
-						},
-					},
-				},
-			},
-		})
-		(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.IfStmt{
-			Cond: &ast.BinaryExpr{
-				X: &ast.Ident{
-					Name: "err",
-				},
-				Op: token.NEQ,
-				Y: &ast.Ident{
-					Name: "nil",
-				},
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.ReturnStmt{
-						Results: []ast.Expr{
-							&ast.Ident{
-								Name: "err",
-							},
-						},
-					},
-				},
-			},
-		})
-		(*InnerStmt).(*ast.RangeStmt).Body.List = append((*InnerStmt).(*ast.RangeStmt).Body.List, &ast.AssignStmt{
-			Lhs: []ast.Expr{
-				func() ast.Expr {
-					var oe ast.Expr
-					var ie *ast.Expr
-					li := levelOfArrays - 1
-					for range levelOfArrays - 1 {
-						if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
-							(*ie).(*ast.IndexExpr).X = &ast.IndexExpr{}
-							(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-								Name: "i" + strconv.Itoa(li),
-							}
-							*ie = (*ie).(*ast.IndexExpr).X
-						} else {
-							var k ast.Expr
-							k = &ast.IndexExpr{}
-							ie = &k
-							oe = k
-						}
-						li--
-					}
-					if ie == nil {
-						return &ast.StarExpr{
-							X: &ast.Ident{
-								Name: string(unicode.ToLower([]rune(name)[0])),
-							},
-						}
-					}
-					(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
-						X: &ast.StarExpr{
-							X: &ast.Ident{
-								Name: string(unicode.ToLower([]rune(name)[0])),
-							},
-						},
-					}
-					(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-						Name: "i0",
-					}
-					return oe
-				}(),
-			},
-			Tok: token.ASSIGN,
-			Rhs: []ast.Expr{
-				&ast.CallExpr{
-					Fun: &ast.Ident{
-						Name: "append",
-					},
-					Args: []ast.Expr{
-
-						func() ast.Expr {
-							var oe ast.Expr
-							var ie *ast.Expr
-							li := levelOfArrays - 1
-							for range levelOfArrays - 1 {
-								if ie != nil && reflect.TypeOf(*ie) == reflect.TypeOf(&ast.IndexExpr{}) {
-									(*ie).(*ast.IndexExpr).X = &ast.IndexExpr{}
-									(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-										Name: "i" + strconv.Itoa(li),
-									}
-									*ie = (*ie).(*ast.IndexExpr).X
-								} else {
-									var k ast.Expr
-									k = &ast.IndexExpr{}
-									ie = &k
-									oe = k
-								}
-								li--
-							}
-							if ie == nil {
-								return &ast.StarExpr{
-									X: &ast.Ident{
-										Name: string(unicode.ToLower([]rune(name)[0])),
-									},
-								}
-							}
-							(*ie).(*ast.IndexExpr).X = &ast.ParenExpr{
-								X: &ast.StarExpr{
-									X: &ast.Ident{
-										Name: string(unicode.ToLower([]rune(name)[0])),
-									},
-								},
-							}
-							(*ie).(*ast.IndexExpr).Index = &ast.Ident{
-								Name: "i" + strconv.Itoa(0),
-							}
-							return oe
-						}(),
-						&ast.Ident{Name: "value"},
-					},
-				},
-			},
-		})
-		stmts = append(stmts, OuterStmt)
-	}
+	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(name)[0]))}}, fieldType))
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.Ident{
@@ -414,20 +173,6 @@ func (g *Generator) arrayGenerator(path string, levelOfArrays int, fieldType str
 			},
 		},
 	})
-	return stmts, []string{"encoding/json"}
-}
 
-func GeneratedNestedArray(levelOfArrays int, InnerExpr *ast.Expr, OuterExpr ast.Expr) (*ast.Expr, ast.Expr) {
-	for range levelOfArrays {
-		if InnerExpr != nil && reflect.TypeOf(*InnerExpr) == reflect.TypeOf(&ast.ArrayType{}) {
-			(*InnerExpr).(*ast.ArrayType).Elt = &ast.ArrayType{}
-			*InnerExpr = (*InnerExpr).(*ast.ArrayType).Elt
-		} else {
-			var k ast.Expr
-			k = &ast.ArrayType{}
-			InnerExpr = &k
-			OuterExpr = k
-		}
-	}
-	return InnerExpr, OuterExpr
+	return stmts, []string{"encoding/json"}
 }
