@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
-	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -211,23 +211,32 @@ func (e *EnumTypeChecker) GetName() string {
 	return "json2go.EnumTypeChecker"
 }
 
-func (e *EnumTypeChecker) SetState(state json.RawMessage, currentPath string) error {
-	e.currentPath = currentPath
-	e.state = nil
-	if state != nil {
-		err := json.Unmarshal(state, e.state)
-		if err != nil {
-			return err
+func (e *EnumTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
+	//TODO combine states
+	/*
+		e.currentPath = currentPath
+		e.state = nil
+		if state != nil {
+			err := json.Unmarshal(state, e.state)
+			if err != nil {
+				return err
+			}
 		}
-	}
+
+	*/
 	return nil
 }
 
-func (e *EnumTypeChecker) GetState() (json.RawMessage, error) {
-	if e.state == nil {
-		return nil, nil
-	}
-	return json.Marshal(e.state)
+func (e *EnumTypeChecker) GetState() ([]*json.RawMessage, error) {
+	//TODO combine states
+	/*
+		if e.state == nil {
+			return nil, nil
+		}
+		return json.Marshal(e.state)
+
+	*/
+	return nil, nil
 }
 
 func (e *EnumTypeChecker) generateType(enumName string) error {
@@ -260,7 +269,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 					specs = append(specs, &ast.ValueSpec{
 						Names: []*ast.Ident{
 							&ast.Ident{
-								Name: enumName + strcase.ToCamel(value),
+								Name: enumName + utils.JsonNameToGoName(value),
 							},
 						},
 						Type: &ast.Ident{
@@ -276,7 +285,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 					specs = append(specs, &ast.ValueSpec{
 						Names: []*ast.Ident{
 							&ast.Ident{
-								Name: enumName + strcase.ToCamel(value),
+								Name: enumName + utils.JsonNameToGoName(value),
 							},
 						},
 					})
@@ -361,7 +370,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 										&ast.ReturnStmt{
 											Results: []ast.Expr{
 												&ast.Ident{
-													Name: enumName + strcase.ToCamel(value),
+													Name: enumName + utils.JsonNameToGoName(value),
 												},
 												&ast.Ident{
 													Name: "nil",
@@ -468,7 +477,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 								stmts = append(stmts, &ast.CaseClause{
 									List: []ast.Expr{
 										&ast.Ident{
-											Name: enumName + strcase.ToCamel(value),
+											Name: enumName + utils.JsonNameToGoName(value),
 										},
 									},
 									Body: []ast.Stmt{

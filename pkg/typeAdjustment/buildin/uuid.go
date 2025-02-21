@@ -10,11 +10,11 @@ import (
 
 type UUIDTypeChecker struct{}
 
-func (u *UUIDTypeChecker) SetState(state json.RawMessage, currentPath string) error {
+func (u *UUIDTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
 	return nil
 }
 
-func (u *UUIDTypeChecker) GetState() (json.RawMessage, error) {
+func (u *UUIDTypeChecker) GetState() ([]*json.RawMessage, error) {
 	return nil, nil
 }
 

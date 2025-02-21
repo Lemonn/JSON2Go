@@ -14,11 +14,11 @@ type IntTypeChecker struct {
 	requiredImports []string
 }
 
-func (i *IntTypeChecker) SetState(state json.RawMessage, currentPath string) error {
+func (i *IntTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
 	return nil
 }
 
-func (i *IntTypeChecker) GetState() (json.RawMessage, error) {
+func (i *IntTypeChecker) GetState() ([]*json.RawMessage, error) {
 	return nil, nil
 }
 

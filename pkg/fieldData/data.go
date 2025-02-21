@@ -4,20 +4,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	errors2 "github.com/Lemonn/JSON2Go/pkg/errors"
 	"reflect"
-	"strconv"
-	"time"
 )
 
 type Metadata struct {
-	TotalSampleCount int                   `json:"totalSampleCount"`
-	LastRunTimestamp int64                 `json:"lastRunTimestamp"`
-	Data             map[string]*FieldData `json:"data"`
+	TotalSampleCount int                          `json:"totalSampleCount"`
+	LastRunTimestamp int64                        `json:"lastRunTimestamp"`
+	Data             map[string]*TypeAdjusterData `json:"data"`
 }
-type FieldData struct {
-	// SeenValues Holds all seen field values and their corresponding type
-	SeenValues map[string]*ValueData `json:"seenValues,omitempty"`
+
+type TypeAdjusterData struct {
+	// NameOfActiveTypeAdjuster Name of the TypeAdjuster that replaced the type
+	NameOfActiveTypeAdjuster *string `json:"nameOfActiveTypeAdjuster,omitempty"`
+	// TypeAdjusterData Data stored by the currently in used TypeAdjuster. This is used to emmit the
+	// IncompatibleCustomType error, for example if a type such as time.Time stays the same but the underling
+	// time strings are incompatible
+	TypeAdjusterData []*json.RawMessage `json:"typeAdjusterData,omitempty"`
+	// ExcludedTypeCheckers List of TypeChecker names that should not be run on this field.
+	ExcludedTypeCheckers []string `json:"excludedTypeCheckers,omitempty"`
 	// CheckedNonMatchingTypes Is used to store a map of non-matching types referencing the time of storage as unix timestamp.
 	// This is useful when working with a lot of input data, and the seen values becomes to big
 	CheckedNonMatchingTypes map[string]int64 `json:"checkedNonMatchingTypes,omitempty"`
@@ -25,41 +29,88 @@ type FieldData struct {
 	ParseFunctions *ParseFunctions `json:"parseFunctions,omitempty"`
 	// BaseType The type before it was modified from a TypeDeterminationFunction
 	BaseType *string `json:"baseType,omitempty"`
-	// CurrentCustomType Set whenever a custom type is in use. For example is set to time.Time for the time type
-	CurrentCustomType *string `json:"currentCustomType,omitempty"`
-	// MixedTypes is set, whenever an array whit mixed types is encountered
-	MixedTypes bool `json:"mixedTypes,omitempty"`
-	// LastSeenTimestamp Unix timestamp. Is updated whenever a value is seen
-	LastSeenTimestamp int64 `json:"lastSeenTimestamp"`
-	// Omitempty Is set whenever a field is omitted in some response
-	Omitempty bool `json:"emptyValuePresent,omitempty"`
+}
+
+type PathData struct {
+	Types map[Type]map[int]map[string]*ValueDetails `json:"types,omitempty"`
 	// Contains the name, as found in the JSON-File
-	JsonFieldName *string `json:"jsonFieldName,omitempty"`
-	// NameOfActiveTypeAdjuster Name of the TypeAdjuster that replaced the type
-	NameOfActiveTypeAdjuster *string `json:"nameOfActiveTypeAdjuster,omitempty"`
-	// TypeAdjusterData Data stored by the currently in used TypeAdjuster. This is used to emmit the
-	// IncompatibleCustomType error, for example if a type such as time.Time stays the same but the underling
-	// time strings are incompatible
-	TypeAdjusterData json.RawMessage `json:"typeAdjusterData,omitempty"`
-	// StructType Set whenever only data of a struct is stored.
-	StructType bool `json:"structType,omitempty"`
-	// RequiredField set to true, if the unmarshall generator should make this a required field.
-	RequiredField bool `json:"requiredField,omitempty"`
-	// ExcludedTypeCheckers List of TypeChecker names that should not be run on this field.
-	ExcludedTypeCheckers []string `json:"excludedTypeCheckers,omitempty"`
+	JsonFieldName    string            `json:"jsonFieldName,omitempty"`
+	Package          *string           `json:"package,omitempty"`
+	Omitempty        bool              `json:"omitempty,omitempty"`
+	TypeAdjusterData *TypeAdjusterData `json:"typeAdjusterData,omitempty"`
 	// Error Holds an error of type FieldPresenceChangeError, errors.IncompatibleCustomTypeError or errors.TypeChangeError.
 	// It's up to the caller, what to do with this. errors.IncompatibleCustomTypeError or TypeChangeError
 	// indicate a major version change. Should be set to nil, before next run!
 	Error error `json:"error,omitempty"`
-	// LevelOfArrays stores the amount of arrays the type is nested in
-	LevelOfArrays int `json:"levelOfArrays,omitempty"`
+	// RequiredField set to true, if the unmarshall generator should make this a required field.
+	RequiredField bool `json:"requiredField,omitempty"`
 }
 
-type ValueData struct {
-	Type               string `json:"type,omitempty"`
-	Count              int    `json:"count,omitempty"`
-	FirstSeenTimestamp int64  `json:"firstSeenTimestamp,omitempty"`
-	LastSeenTimestamp  int64  `json:"lastSeenTimestamp,omitempty"`
+func (p *PathData) Combine(p1 *PathData) (*PathData, error) {
+	newP := PathData{Types: make(map[Type]map[int]map[string]*ValueDetails)}
+	for t, arrayLevels := range p.Types {
+		if _, ok := newP.Types[t]; !ok {
+			newP.Types[t] = make(map[int]map[string]*ValueDetails)
+		}
+		for level, valueDetails := range arrayLevels {
+			if _, ok := newP.Types[t][level]; !ok {
+				newP.Types[t][level] = map[string]*ValueDetails{}
+			}
+			for value, valueDetail := range valueDetails {
+				if _, ok := newP.Types[t][level][value]; !ok {
+					newP.Types[t][level][value] = valueDetail
+				} else {
+					newP.Types[t][level][value].Combine(valueDetail)
+				}
+			}
+
+		}
+	}
+	for t, arrayLevels := range p1.Types {
+		if _, ok := newP.Types[t]; !ok {
+			newP.Types[t] = make(map[int]map[string]*ValueDetails)
+		}
+		for level, valueDetails := range arrayLevels {
+			if _, ok := newP.Types[t][level]; !ok {
+				newP.Types[t][level] = map[string]*ValueDetails{}
+			}
+			for value, valueDetail := range valueDetails {
+				if _, ok := newP.Types[t][level][value]; !ok {
+					newP.Types[t][level][value] = valueDetail
+				} else {
+					newP.Types[t][level][value].Combine(valueDetail)
+				}
+			}
+
+		}
+	}
+	//TODO combine simple fields
+	return &newP, nil
+}
+
+type ValueDetails struct {
+	Count              int
+	FirstSeenTimestamp int64
+	LastSeenTimestamp  int64
+}
+
+func (v *ValueDetails) Combine(v1 *ValueDetails) *ValueDetails {
+	var combinedValueDetails ValueDetails
+	//Combine Count
+	combinedValueDetails.Count = v.Count + v1.Count
+	//Combine FirstSeenTimestamp
+	if v.FirstSeenTimestamp < v1.FirstSeenTimestamp {
+		combinedValueDetails.FirstSeenTimestamp = v.FirstSeenTimestamp
+	} else {
+		combinedValueDetails.FirstSeenTimestamp = v1.FirstSeenTimestamp
+	}
+	// Combine LastSeenTimestamp
+	if v.LastSeenTimestamp > v1.LastSeenTimestamp {
+		combinedValueDetails.LastSeenTimestamp = v.LastSeenTimestamp
+	} else {
+		combinedValueDetails.LastSeenTimestamp = v1.LastSeenTimestamp
+	}
+	return &combinedValueDetails
 }
 
 // ParseFunctions Holds the names of the parse functions
@@ -70,223 +121,31 @@ type ParseFunctions struct {
 	ToTypeParseFunction string `json:"toTypeParseFunction,omitempty"`
 }
 
-func (j *FieldData) Combine(j1 *FieldData) (*FieldData, error) {
-	var jNew FieldData
-	//Combine BaseType
-	if j.BaseType == nil && j1.BaseType == nil {
-		jNew.BaseType = nil
-	} else if j.BaseType != nil && j1.BaseType == nil {
-		jNew.BaseType = j.BaseType
-	} else if j.BaseType == nil && j1.BaseType != nil {
-		jNew.BaseType = j1.BaseType
-	} else if *j.BaseType != *j1.BaseType {
-		return nil, errors.New(fmt.Sprintf("base type not equal %s:%s", *j.BaseType, *j1.BaseType))
-	} else {
-		jNew.BaseType = j1.BaseType
-	}
+type Type string
 
-	//Combine ParseFunction
-	if j.ParseFunctions == nil && j1.ParseFunctions == nil {
-		jNew.ParseFunctions = nil
-	} else if j.ParseFunctions != nil && j1.ParseFunctions == nil {
-		jNew.ParseFunctions = j.ParseFunctions
-	} else if j.ParseFunctions == nil && j1.ParseFunctions != nil {
-		jNew.ParseFunctions = j1.ParseFunctions
-	} else if j.ParseFunctions.ToTypeParseFunction != j1.ParseFunctions.ToTypeParseFunction ||
-		j.ParseFunctions.FromTypeParseFunction != j1.ParseFunctions.FromTypeParseFunction {
-		return nil, errors.New("parse functions not equal")
-	} else {
-		jNew.ParseFunctions = j1.ParseFunctions
-	}
+const (
+	String      Type = "string"
+	Float64     Type = "float64"
+	Bool        Type = "bool"
+	Field       Type = "field"
+	Unsupported Type = "unsupported"
+)
 
-	//Combine SeenValues
-	values := make(map[string][]*ValueData)
-	if j.SeenValues != nil {
-		for value, FieldType := range j.SeenValues {
-			values[value] = []*ValueData{}
-			values[value] = append(values[value], FieldType)
-		}
-	}
-	if j1.SeenValues != nil {
-		for value, FieldType := range j1.SeenValues {
-			if _, ok := values[value]; !ok {
-				values[value] = []*ValueData{}
-			}
-			values[value] = append(values[value], FieldType)
-		}
-	}
-	combinedValues := map[string]*ValueData{}
-	var err error
-	for key, vData := range values {
-		if len(vData) > 1 {
-			combinedValues[key], err = vData[0].Combine(vData[1])
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			combinedValues[key] = vData[0]
-		}
-	}
-	jNew.SeenValues = combinedValues
-
-	//Combine NonMatchingTypes
-	NonMatchingTypes := make(map[string]int64)
-	if j.CheckedNonMatchingTypes != nil {
-		for key, value := range j.CheckedNonMatchingTypes {
-			NonMatchingTypes[key] = value
-		}
-	}
-	if j1.CheckedNonMatchingTypes != nil {
-		for key, value := range j1.CheckedNonMatchingTypes {
-			NonMatchingTypes[key] = value
-		}
-	}
-	jNew.CheckedNonMatchingTypes = NonMatchingTypes
-
-	//Combine LastSeen
-	if j.LastSeenTimestamp > j1.LastSeenTimestamp {
-		jNew.LastSeenTimestamp = j.LastSeenTimestamp
-	} else {
-		jNew.LastSeenTimestamp = j1.LastSeenTimestamp
-	}
-
-	//Combine MixedTypes
-	if j.MixedTypes || j1.MixedTypes {
-		jNew.MixedTypes = true
-	} else {
-		jNew.MixedTypes = false
-	}
-
-	// Combine EmptyValuePresent
-	if j.Omitempty || j1.Omitempty {
-		jNew.Omitempty = true
-	} else {
-		jNew.Omitempty = false
-	}
-
-	//Combine JsonFieldName
-	if j.JsonFieldName != nil {
-		jNew.JsonFieldName = j.JsonFieldName
-	} else {
-		jNew.JsonFieldName = j1.JsonFieldName
-	}
-
-	//Combine StructType
-	if j.StructType || j1.StructType {
-		jNew.StructType = true
-	} else {
-		jNew.StructType = false
-	}
-
-	//Combine RequiredField
-	if j.RequiredField || j1.RequiredField {
-		jNew.RequiredField = true
-	} else {
-		jNew.RequiredField = false
-	}
-
-	//Combine NameOfActiveTypeAdjuster
-	if j.NameOfActiveTypeAdjuster != nil {
-		jNew.NameOfActiveTypeAdjuster = j.NameOfActiveTypeAdjuster
-	} else {
-		jNew.NameOfActiveTypeAdjuster = j1.NameOfActiveTypeAdjuster
-	}
-
-	//Combine TypeAdjusterData
-	if j.TypeAdjusterData != nil {
-		jNew.TypeAdjusterData = j.TypeAdjusterData
-	} else {
-		jNew.TypeAdjusterData = j1.TypeAdjusterData
-	}
-
-	//Combine LevelOfArrays
-	if j.LevelOfArrays > j1.LevelOfArrays {
-		jNew.LevelOfArrays = j.LevelOfArrays
-	} else {
-		jNew.LevelOfArrays = j1.LevelOfArrays
-	}
-
-	return &jNew, nil
+func TypeFromAny(a any) (Type, error) {
+	return NewType(reflect.TypeOf(a).String())
 }
 
-func (v *ValueData) Combine(v1 *ValueData) (*ValueData, error) {
-	var vNew ValueData
-	// Combine Type
-	if v.Type == v1.Type {
-		vNew.Type = v1.Type
-	} else {
-		return nil, &errors2.TypeConflictError{
-			OldType: v.Type,
-			NewType: v1.Type,
-		}
-	}
-	//Combine Count
-	vNew.Count = v.Count + v1.Count
-
-	//Combine FirstSeenTimestamp
-	if v.FirstSeenTimestamp < v1.FirstSeenTimestamp {
-		vNew.FirstSeenTimestamp = v.FirstSeenTimestamp
-	} else {
-		vNew.FirstSeenTimestamp = v1.FirstSeenTimestamp
-	}
-
-	//Combine LastSeenTimestamp
-	if v.LastSeenTimestamp > v1.LastSeenTimestamp {
-		vNew.LastSeenTimestamp = v.LastSeenTimestamp
-	} else {
-		vNew.LastSeenTimestamp = v1.LastSeenTimestamp
-	}
-
-	return &vNew, nil
-}
-
-func NewTagFromFieldData(startTime time.Time, fieldData interface{}) (*FieldData, error) {
-	var fieldValue string
-	switch t := fieldData.(type) {
-	case float64:
-		fieldValue = strconv.FormatFloat(t, 'f', -1, 64)
-	case bool:
-		if t {
-			fieldValue = "true"
-		}
-		fieldValue = "false"
-	case string:
-		fieldValue = fieldData.(string)
+func NewType(s string) (Type, error) {
+	switch s {
+	case "string":
+		return String, nil
+	case "float64":
+		return Float64, nil
+	case "bool":
+		return Bool, nil
+	case "field":
+		return Field, nil
 	default:
-		return nil, errors.New(fmt.Sprintf("unsupported type of field data: %T", fieldData))
+		return Unsupported, errors.New(fmt.Sprintf("encountred an unsupported type: %s", s))
 	}
-
-	return &FieldData{
-		SeenValues: map[string]*ValueData{fieldValue: {
-			Type:               reflect.TypeOf(fieldData).String(),
-			Count:              1,
-			LastSeenTimestamp:  startTime.Unix(),
-			FirstSeenTimestamp: startTime.Unix(),
-		}},
-	}, nil
-}
-
-func SetOrCombineFieldData(data *FieldData, tags map[string]*FieldData, path string) error {
-	if v, ok := tags[path]; ok {
-		combine, err := data.Combine(v)
-		if err != nil {
-			return err
-		}
-		tags[path] = combine
-	} else {
-		tags[path] = data
-	}
-	return nil
-}
-
-func IncreaseLevelOfArray(tags map[string]*FieldData, path string) int {
-	var oldLevel int
-	if _, ok := tags[path]; ok {
-		oldLevel = tags[path].LevelOfArrays
-		tags[path].LevelOfArrays++
-	} else {
-		oldLevel = 1
-		tags[path] = &FieldData{LevelOfArrays: 1}
-	}
-	return oldLevel
 }

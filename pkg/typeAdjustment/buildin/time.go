@@ -28,24 +28,32 @@ type timeTypeCheckerState struct {
 	LayoutString string `json:"layoutString,omitempty"`
 }
 
-func (t *TimeTypeChecker) SetState(state json.RawMessage, currentPath string) error {
-	var s timeTypeCheckerState
-	if state != nil {
-		err := json.Unmarshal(state, &s)
-		if err != nil {
-			return err
+func (t *TimeTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
+	//TODO implement combiner
+	/*
+		var s timeTypeCheckerState
+		if state != nil {
+			err := json.Unmarshal(state, &s)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	t.state = &s
+		t.state = &s
+
+	*/
 	return nil
 }
 
-func (t *TimeTypeChecker) GetState() (json.RawMessage, error) {
-	b, err := json.Marshal(t.state)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+func (t *TimeTypeChecker) GetState() ([]*json.RawMessage, error) {
+	//TODO implement combiner
+	/*
+		b, err := json.Marshal(t.state)
+		if err != nil {
+			return nil, err
+		}
+		return b, nil
+	*/
+	return nil, nil
 }
 
 func (t *TimeTypeChecker) GetType() ast.Expr {

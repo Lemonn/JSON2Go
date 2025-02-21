@@ -347,10 +347,10 @@ func (m *MixedBaseTypeTypeChecker) GetName() string {
 	return "json2go.MixedBaseTypeTypeChecker"
 }
 
-func (m *MixedBaseTypeTypeChecker) SetState(_ json.RawMessage, _ string) error {
+func (m *MixedBaseTypeTypeChecker) SetState(_ []*json.RawMessage, _ string) error {
 	return nil
 }
 
-func (m *MixedBaseTypeTypeChecker) GetState() (json.RawMessage, error) {
+func (m *MixedBaseTypeTypeChecker) GetState() ([]*json.RawMessage, error) {
 	return nil, nil
 }

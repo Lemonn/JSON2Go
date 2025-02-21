@@ -12,18 +12,25 @@ import (
 )
 
 type Generator struct {
-	data  map[string]*fieldData.FieldData
-	added bool
+	data       map[string]*fieldData.FieldData
+	added      bool
+	inputFile  *ast.File
+	outputFile *ast.File
 }
 
-func NewGenerator(data map[string]*fieldData.FieldData) *Generator {
-	return &Generator{data: data}
+func NewGenerator(data map[string]*fieldData.FieldData, inputFile, outputFile *ast.File) *Generator {
+	return &Generator{
+		data:       data,
+		added:      false,
+		inputFile:  inputFile,
+		outputFile: outputFile,
+	}
 }
 
-func (g *Generator) Generate(file *ast.File) error {
+func (g *Generator) Generate() error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
-	AstUtils.SearchNodes(file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+	AstUtils.SearchNodes(g.inputFile, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
 		if _, ok := (*n).(*ast.StructType); ok && len(parents) > 0 {
 			return true
 		} else if _, ok := (*n).(*ast.Ident); ok && len(parents) > 0 {
@@ -75,7 +82,7 @@ func (g *Generator) Generate(file *ast.File) error {
 			if !g.added {
 				g.added = true
 				// Add AdditionalElementError + support methods
-				file.Decls = append(file.Decls, &ast.GenDecl{
+				g.outputFile.Decls = append(g.outputFile.Decls, &ast.GenDecl{
 					Tok: token.TYPE,
 					Specs: []ast.Spec{
 						&ast.TypeSpec{
@@ -121,7 +128,7 @@ func (g *Generator) Generate(file *ast.File) error {
 						},
 					},
 				})
-				file.Decls = append(file.Decls, &ast.FuncDecl{
+				g.outputFile.Decls = append(g.outputFile.Decls, &ast.FuncDecl{
 					Recv: &ast.FieldList{
 						List: []*ast.Field{
 							{
@@ -172,7 +179,7 @@ func (g *Generator) Generate(file *ast.File) error {
 						},
 					},
 				})
-				file.Decls = append(file.Decls, &ast.FuncDecl{
+				g.outputFile.Decls = append(g.outputFile.Decls, &ast.FuncDecl{
 					Recv: &ast.FieldList{
 						List: []*ast.Field{
 							{
@@ -311,17 +318,17 @@ func (g *Generator) Generate(file *ast.File) error {
 						},
 					},
 				})
-				addGetAllErrorsOfTypeFunction(file)
-				addCheckForFirstErrorNotOfTypeTFunction(file)
+				addGetAllErrorsOfTypeFunction(g.outputFile)
+				addCheckForFirstErrorNotOfTypeTFunction(g.outputFile)
 			}
 
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.outputFile, imports)
 		case *ast.Ident:
 			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.Ident), path)
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.outputFile, imports)
 		case *ast.SelectorExpr:
 			stmts, imports = g.arrayGenerator(path, levelOfArrays, (*node.Node).(*ast.SelectorExpr), path)
-			AstUtils.AddMissingImports(file, imports)
+			AstUtils.AddMissingImports(g.outputFile, imports)
 		default:
 			return errors.New(fmt.Sprintf("unkown type: %s", reflect.TypeOf(*node.Node).String()))
 		}
@@ -377,8 +384,8 @@ func (g *Generator) Generate(file *ast.File) error {
 			},
 			Body: &ast.BlockStmt{List: stmts},
 		}
-		file.Decls = append(file.Decls, f1)
+		g.outputFile.Decls = append(g.outputFile.Decls, f1)
 	}
-	AstUtils.AddMissingImports(file, []string{"encoding/json"})
+	AstUtils.AddMissingImports(g.outputFile, []string{"encoding/json"})
 	return nil
 }

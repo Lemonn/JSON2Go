@@ -1,33 +1,37 @@
 package structGenerator
 
 import (
+	"bytes"
 	"encoding/json"
-	"github.com/Lemonn/AstUtils"
+	"errors"
+	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
-	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
-	"github.com/iancoleman/strcase"
 	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/printer"
 	"go/token"
-	"reflect"
+	"math"
+	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type StructGenerator struct {
-	data      map[string]*fieldData.FieldData
+	seenTypes map[string]*fieldData.PathData
 	file      *ast.File
 	startTime time.Time
 }
 
-func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
+func NewCodeGenerator(data map[string]*fieldData.FieldData) *StructGenerator {
 	if data == nil {
-		data = &map[string]*fieldData.FieldData{}
+		data = make(map[string]*fieldData.FieldData)
 	}
 	return &StructGenerator{
-		data:      *data,
 		startTime: time.Now(),
 	}
 }
@@ -35,66 +39,24 @@ func NewCodeGenerator(data *map[string]*fieldData.FieldData) *StructGenerator {
 func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, path string, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction) error {
 	var JsonData interface{}
 	var err error
-	structFile := utils.GetEmptyFile(packageName)
-	s.file = structFile
 	err = json.Unmarshal(jsonData, &JsonData)
 	if err != nil {
 		return err
 	}
-	fields, err := s.codeGen(JsonData, structName)
-	if err != nil {
-		return err
-	}
-	err = s.packType(fields, structName)
+	err = s.codeGen(JsonData, structName, 0)
 	if err != nil {
 		return err
 	}
 
-	AstUtils.UnnestStruct(nil, s.file)
-	s.renamePaths()
-	s.attachJsonTags()
-
-	typeAdjusterFile := utils.GetEmptyFile(packageName)
-	if typeAdjusters != nil && len(typeAdjusters) > 0 {
-		ta := typeAdjustment.NewTypeAdjuster(s.data, s.file, typeAdjusterFile)
-		err = ta.AdjustTypes(typeAdjusters, true)
-		if err != nil {
-			return err
-		}
-	}
-	output := bytes.NewBuffer([]byte{})
-	if err = printer.Fprint(output, token.NewFileSet(), typeAdjusterFile); err != nil {
-		return err
-	}
-	err = os.WriteFile(path+"/typeAdjusters.go", output.Bytes(), 0666)
+	err = s.testNew(path, typeAdjusters)
 	if err != nil {
 		return err
 	}
-
-	marshallFile := utils.GetEmptyFile(packageName)
-	marshallGen := marshaller.NewGenerator(s.data, s.file, marshallFile)
-	err = marshallGen.Generate()
+	temp, err := json.Marshal(s.seenTypes)
 	if err != nil {
 		return err
 	}
-
-	output = bytes.NewBuffer([]byte{})
-	if err = printer.Fprint(output, token.NewFileSet(), marshallFile); err != nil {
-		return err
-	}
-
-	c, err := format.Source(output.Bytes())
-	err = os.WriteFile(path+"/marshall.go", c, 0666)
-	if err != nil {
-		return err
-	}
-
-	output = bytes.NewBuffer([]byte{})
-	if err = printer.Fprint(output, token.NewFileSet(), s.file); err != nil {
-		return err
-	}
-	c, err = format.Source(output.Bytes())
-	err = os.WriteFile(path+"/struct.go", c, 0666)
+	err = os.WriteFile(path+"/seenTypes.json", temp, 0666)
 	if err != nil {
 		return err
 	}
@@ -102,58 +64,232 @@ func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, p
 	return nil
 }
 
-func (s *StructGenerator) GenerateCodeIntoFile(jsonData []byte, file *ast.File, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction, generateJSONMarshaller bool) (*fieldData.Metadata, error) {
-	s.file = file
-	var JsonData interface{}
-	var err error
-	err = json.Unmarshal(jsonData, &JsonData)
-	if err != nil {
-		return nil, err
-	}
-
-	fields, err := s.codeGen(JsonData, structName)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.packType(fields, structName)
-	if err != nil {
-		return nil, err
-	}
-
-	AstUtils.UnnestStruct(nil, file)
-	s.renamePaths()
-	s.attachJsonTags()
-
-	if typeAdjusters != nil && len(typeAdjusters) > 0 {
-		ta := typeAdjustment.NewTypeAdjuster(s.file, s.data)
-		err = ta.AdjustTypes(typeAdjusters, true)
-		if err != nil {
-			return nil, err
+func (s *StructGenerator) getStartPath() (string, error) {
+	for path, _ := range s.seenTypes {
+		pathElements := strings.Split(path, ".")
+		if len(pathElements) == 1 {
+			return pathElements[0], nil
 		}
 	}
-
-	if generateJSONMarshaller {
-		marshallGen := marshaller.NewGenerator(s.data)
-		err = marshallGen.Generate(s.file)
-		if err != nil {
-			return nil, err
-		}
-		unmarshallGen := unmarshaller.NewGenerator(s.data)
-		err = unmarshallGen.Generate(s.file)
-		if err != nil {
-			return nil, err
-		}
-
-	}
-
-	return &fieldData.Metadata{
-		TotalSampleCount: 1,
-		LastRunTimestamp: s.startTime.Unix(),
-		Data:             s.data,
-	}, nil
+	return "", errors.New("start path not found")
 }
 
+func (s *StructGenerator) getFieldType(path string) (expr ast.Expr, structType bool) {
+	levelOfArrays := math.MaxInt32
+	//TODO error on path not found
+	if len(s.seenTypes[path].Types) == 1 {
+		var Type fieldData.Type
+		for Type, _ = range s.seenTypes[path].Types {
+			break
+		}
+		if len(s.seenTypes[path].Types[Type]) == 1 {
+			for levelOfArrays, _ = range s.seenTypes[path].Types[Type] {
+				break
+			}
+			pathElements := strings.Split(path, ".")
+			if Type == fieldData.Field {
+				structType = true
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}})
+			} else {
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.Ident{Name: string(Type)})
+			}
+		} else {
+			for i, _ := range s.seenTypes[path].Types[Type] {
+				if levelOfArrays > i {
+					levelOfArrays = i
+				}
+			}
+			expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+		}
+	} else {
+		for _, m := range s.seenTypes[path].Types {
+			for i, _ := range m {
+				if levelOfArrays > i {
+					levelOfArrays = i
+				}
+			}
+		}
+		expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+	}
+	return expr, structType
+}
+
+func reversePath(path string, reversePath map[string]int) {
+	pathElements := strings.Split(path, ".")
+	for i, _ := range pathElements {
+		var p string
+		for j := range i + 1 {
+			if p == "" {
+				p = pathElements[len(pathElements)-j-1]
+			} else {
+				p = p + "." + pathElements[len(pathElements)-j-1]
+			}
+		}
+		if _, ok := reversePath[p]; ok {
+			reversePath[p]++
+		} else {
+			reversePath[p] = 1
+		}
+	}
+}
+
+func (s *StructGenerator) markNamingConflicts() {
+	rPath := make(map[string]int)
+
+	for path, data := range s.seenTypes {
+		if _, ok := data.Types[fieldData.Field]; ok {
+			reversePath(path, rPath)
+		}
+	}
+
+	for path, data := range s.seenTypes {
+		if _, ok := data.Types[fieldData.Field]; ok {
+			pathElements := strings.Split(path, ".")
+			p := pathElements[len(pathElements)-1]
+			for i := 1; i < len(pathElements); i++ {
+				if rPath[p] == 1 && i == 1 {
+					break
+				}
+				if rPath[p] == 1 {
+					slices.Reverse([]byte(p))
+					s.seenTypes[path].Package = &p
+					break
+				}
+				p += "." + pathElements[len(pathElements)-i-1]
+			}
+		}
+	}
+}
+
+/*
+func (s *StructGenerator) setOmitempty() {
+	for s2, data := range s.seenTypes {
+		for t, m := range data.Types {
+			for i, m2 := range m {
+
+			}
+		}
+	}
+}
+
+*/
+
+func (s *StructGenerator) testNew(filePath string, typeAdjusters []typeAdjustment.TypeDeterminationFunction) error {
+	s.markNamingConflicts()
+	startPath, err := s.getStartPath()
+	if err != nil {
+		return err
+	}
+
+	pathsToProcess := []string{startPath}
+	files := make(map[string]*ast.File)
+	fset := token.NewFileSet()
+	defaultFile, err := parser.ParseFile(fset, "", "package test", parser.ParseComments)
+	if err != nil {
+		panic(err)
+	}
+
+	for {
+		for _, path := range pathsToProcess {
+			var file *ast.File
+
+			if s.seenTypes[path].Package != nil {
+				if _, ok := files[*s.seenTypes[path].Package]; ok {
+					file = files[*s.seenTypes[path].Package]
+				} else {
+					fset := token.NewFileSet()
+					file, err = parser.ParseFile(fset, "", "package "+strings.ReplaceAll(*s.seenTypes[path].Package, ".", ""), parser.ParseComments)
+					if err != nil {
+						return err
+					}
+					files[*s.seenTypes[path].Package] = file
+				}
+			} else {
+				file = defaultFile
+			}
+			expr, structType := s.getFieldType(path)
+			if structType {
+				var fields []*ast.Field
+				var levelOfArrays int
+				for levelOfArrays, _ = range s.seenTypes[path].Types["field"] {
+					break
+				}
+				for fieldPath, _ := range s.seenTypes[path].Types["field"][levelOfArrays] {
+					expr, structType = s.getFieldType(fieldPath)
+					if structType {
+						pathsToProcess = append(pathsToProcess, fieldPath)
+					}
+					pathElements := strings.Split(fieldPath, ".")
+					fields = append(fields, &ast.Field{
+						Names: []*ast.Ident{{Name: pathElements[len(pathElements)-1]}},
+						Type:  expr,
+						Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", s.seenTypes[fieldPath].JsonFieldName)},
+					})
+				}
+				pathElements := strings.Split(path, ".")
+				file.Decls = append(file.Decls, &ast.GenDecl{
+					Tok: token.TYPE,
+					Specs: []ast.Spec{
+						&ast.TypeSpec{
+							Name: &ast.Ident{
+								Name: pathElements[len(pathElements)-1],
+							},
+							Type: &ast.StructType{
+								Fields: &ast.FieldList{List: fields},
+							},
+						},
+					},
+				})
+			} else {
+				fmt.Println(path)
+				file.Decls = append(file.Decls, &ast.GenDecl{
+					Tok: token.TYPE,
+					Specs: []ast.Spec{
+						&ast.TypeSpec{
+							Name: &ast.Ident{
+								Name: path,
+							},
+							Type: expr,
+						},
+					},
+				})
+			}
+			pathsToProcess = pathsToProcess[1:]
+		}
+		if len(pathsToProcess) == 0 {
+			break
+		}
+	}
+
+	for path, file := range files {
+		err = os.MkdirAll(strings.ReplaceAll(filePath+"/"+path, ".", "/"), os.ModePerm)
+		output := bytes.NewBuffer([]byte{})
+		fset := token.NewFileSet()
+		if err := printer.Fprint(output, fset, file); err != nil {
+			return err
+		}
+		c, err := format.Source(output.Bytes())
+		err = os.WriteFile(strings.ReplaceAll(filePath+"/"+path, ".", "/")+"/testNew.go", c, 0666)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	output := bytes.NewBuffer([]byte{})
+	fset = token.NewFileSet()
+	if err := printer.Fprint(output, fset, defaultFile); err != nil {
+		return err
+	}
+	c, err := format.Source(output.Bytes())
+	err = os.WriteFile(filePath+"/test.go", c, 0666)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+/*
 func (s *StructGenerator) packType(fields []*ast.Field, structName string) error {
 	expr, levelOfArrays, err := utils.WalkExpressionsWhitArrayCount(&fields[0].Type)
 	if err != nil {
@@ -181,20 +317,11 @@ func (s *StructGenerator) packType(fields []*ast.Field, structName string) error
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
 					Name: ast.NewIdent(structName),
-					Type: func() ast.Expr {
-						if levelOfArrays == 0 {
-							return *expr
-						}
-						var oe ast.Expr
-						var ie *ast.Expr
-						ie, oe = utils.GeneratedNestedArray(levelOfArrays, ie, oe)
-						(*ie).(*ast.ArrayType).Elt = &ast.StarExpr{
-							X: &ast.Ident{
-								Name: structName + "AnonymousArray",
-							},
-						}
-						return oe
-					}(),
+					Type: utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{
+						X: &ast.Ident{
+							Name: structName + "AnonymousArray",
+						},
+					}),
 				},
 			},
 		})
@@ -224,150 +351,131 @@ func (s *StructGenerator) packType(fields []*ast.Field, structName string) error
 			Specs: []ast.Spec{
 				&ast.TypeSpec{
 					Name: ast.NewIdent(structName),
-					Type: func() ast.Expr {
-						if levelOfArrays == 0 {
-							return *expr
-						}
-						var oe ast.Expr
-						var ie *ast.Expr
-						ie, oe = utils.GeneratedNestedArray(levelOfArrays, ie, oe)
-						(*ie).(*ast.ArrayType).Elt = *expr
-						return oe
-					}(),
+					Type: utils.GeneratedNestedArray(levelOfArrays, *expr),
 				},
 			},
 		})
 	}
 	return nil
 }
+*/
 
-func (s *StructGenerator) codeGen(jsonData interface{}, path string) ([]*ast.Field, error) {
-	var fields []*ast.Field
-
+func (s *StructGenerator) codeGen(jsonData interface{}, path string, depth int) error {
 	switch result := jsonData.(type) {
 	case map[string]interface{}:
-		str, err := s.processStruct(result, path)
+		err := s.processStruct(result, path, depth)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		fields = append(fields, &ast.Field{
-			Names: utils.GetFieldIdentFromPath(path),
-			Type:  str,
-		})
 	case []interface{}:
-		slice, err := s.processSlice(result, path)
+		err := s.processSlice(result, path, depth)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		fields = append(fields, &ast.Field{
-			Names: utils.GetFieldIdentFromPath(path),
-			Type:  slice,
-		})
 	default:
-		field, err := s.processField(result, path)
+		err := s.processField(result, path, depth)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		fields = append(fields, &ast.Field{
-			Names: utils.GetFieldIdentFromPath(path),
-			Type:  field,
-		})
 	}
 
-	return fields, nil
+	return nil
+}
+
+func (s *StructGenerator) setTypeAtLevel(path string, Type fieldData.Type, Depth int, value string) {
+	valueDetails := &fieldData.ValueDetails{
+		Count:              1,
+		FirstSeenTimestamp: s.startTime.Unix(),
+		LastSeenTimestamp:  s.startTime.Unix(),
+	}
+	if s.seenTypes == nil {
+		s.seenTypes = map[string]*fieldData.PathData{}
+	}
+	if v, ok := s.seenTypes[path]; !ok {
+		s.seenTypes[path] = &fieldData.PathData{
+			Types: map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
+		}
+	} else if v.Types == nil {
+		s.seenTypes[path].Types = map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{}
+	}
+	if _, ok := s.seenTypes[path].Types[Type]; !ok {
+		s.seenTypes[path].Types[Type] = map[int]map[string]*fieldData.ValueDetails{}
+	}
+	if _, ok := s.seenTypes[path].Types[Type][Depth]; !ok {
+		s.seenTypes[path].Types[Type][Depth] = map[string]*fieldData.ValueDetails{}
+	}
+	if _, ok := s.seenTypes[path].Types[Type][Depth][value]; !ok {
+		s.seenTypes[path].Types[Type][Depth][value] = valueDetails
+	} else {
+		s.seenTypes[path].Types[Type][Depth][value] = s.seenTypes[path].Types[Type][Depth][value].Combine(valueDetails)
+	}
 }
 
 // Processes JSON-Struct elements
-func (s *StructGenerator) processStruct(structData map[string]interface{}, path string) (*ast.StructType, error) {
-	err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{StructType: true, LastSeenTimestamp: s.startTime.Unix()}, s.data, path)
-	if err != nil {
-		return nil, err
-	}
-	var localFields []*ast.Field
+func (s *StructGenerator) processStruct(structData map[string]interface{}, path string, depth int) error {
 	for fieldName, field := range structData {
-		err := fieldData.SetOrCombineFieldData(&fieldData.FieldData{JsonFieldName: &fieldName, LastSeenTimestamp: s.startTime.Unix()}, s.data, path+"."+strcase.ToCamel(fieldName))
-		if err != nil {
-			return nil, err
+		s.setTypeAtLevel(path, fieldData.Field, depth, path+"."+utils.JsonNameToGoName(fieldName))
+		if _, ok := s.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)]; !ok {
+			s.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)] = &fieldData.PathData{JsonFieldName: fieldName}
+		} else {
+			s.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)].JsonFieldName = fieldName
 		}
-		f, err := s.codeGen(field, path+"."+strcase.ToCamel(fieldName))
+		err := s.codeGen(field, path+"."+utils.JsonNameToGoName(fieldName), 0)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		localFields = append(localFields, f...)
 	}
-	return &ast.StructType{Fields: &ast.FieldList{List: localFields}}, nil
+	return nil
 }
 
 // Processes JSON-Array elements
-func (s *StructGenerator) processSlice(sliceData []interface{}, path string) (ast.Expr, error) {
-	var expressionList []ast.Expr
+func (s *StructGenerator) processSlice(sliceData []interface{}, path string, depth int) error {
 	var err error
-	// A JSON-Slice could have five cases:
-	// 1. Contains other slices
-	// 2. Contains other structs
-	// 3. Is of basic type, such as int, string etc.
-	// 4. An empty slice [], is not handled in the loop but later on. In this case []interface{} is used as type.
-	// 5. Contains a mixed set of types, in this case []interface{} is used as type.
-	// Note do distinguish between conflicting types and empty types the json2go tag is used, if conflicting fields are
-	// seen, MixedTypes is set.
+	depth++
 	for _, i := range sliceData {
 		switch v := i.(type) {
 		case []interface{}:
-			slice, err := s.processSlice(v, path)
+			err = s.processSlice(v, path, depth)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			expressionList = append(expressionList, &ast.ArrayType{Elt: slice})
 		case map[string]interface{}:
-			str, err := s.processStruct(v, path)
+			err = s.processStruct(v, path, depth)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			expressionList = append(expressionList, &ast.ArrayType{Elt: str})
 		case interface{}:
-			ident, err := s.processField(v, path)
+			err = s.processField(v, path, depth)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			expressionList = append(expressionList, &ast.ArrayType{Elt: ident})
 		}
 	}
-	// Add an empty []Interface{}, in case of an empty array
-	if len(expressionList) == 0 {
-		expressionList = append(expressionList, &ast.ArrayType{Elt: &ast.InterfaceType{
-			Methods: &ast.FieldList{}},
-		})
-		err = fieldData.SetOrCombineFieldData(&fieldData.FieldData{Omitempty: true}, s.data, path)
-		if err != nil {
-			return nil, err
-		}
-	}
-	f := expressionList[0]
-	for i := 1; i < len(expressionList); i++ {
-		f, err = s.combineFields(f, expressionList[i], path)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return f, nil
+
+	//TODO we need to handle empty [] array
+
+	return nil
 }
 
-func (s *StructGenerator) processField(field interface{}, path string) (*ast.Ident, error) {
-	fData, err := fieldData.NewTagFromFieldData(field)
-	if err != nil {
-		return nil, err
-	}
-	if _, ok := s.data[path]; ok {
-		combine, err := s.data[path].Combine(fData)
-		if err != nil {
-			return nil, err
+func (s *StructGenerator) processField(field interface{}, path string, depth int) error {
+	var fieldValue string
+	switch t := field.(type) {
+	case float64:
+		fieldValue = strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		if t {
+			fieldValue = "true"
 		}
-		s.data[path] = combine
-	} else {
-		s.data[path] = fData
+		fieldValue = "false"
+	case string:
+		fieldValue = field.(string)
+	default:
+		return errors.New(fmt.Sprintf("unsupported type of field data: %T", field))
 	}
-
-	return &ast.Ident{
-		Name: reflect.TypeOf(field).String(),
-	}, nil
+	Type, err := fieldData.TypeFromAny(field)
+	if err != nil {
+		return err
+	}
+	s.setTypeAtLevel(path, Type, depth, fieldValue)
+	return nil
 }

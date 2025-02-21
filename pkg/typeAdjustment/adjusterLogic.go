@@ -155,6 +155,7 @@ func (ta *TypeAdjuster) runChecker(checker TypeDeterminationFunction, fData *fie
 	if err != nil {
 		return StateFailed, nil, err
 	}
+	//TODO extract getExprString function
 	switch e := (*expr).(type) {
 	case *ast.SelectorExpr:
 		originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name

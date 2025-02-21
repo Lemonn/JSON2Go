@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 func WalkExpressions(expr *ast.Expr) (*ast.Expr, error) {
@@ -94,7 +95,7 @@ func GeneratedNestedArray(levelOfArrays int, innerExpr ast.Expr) ast.Expr {
 
 func GetFieldIdentFromPath(path string) []*ast.Ident {
 	pathElements := strings.Split(path, ".")
-	return []*ast.Ident{{Name: strcase.ToCamel(pathElements[len(pathElements)-1])}}
+	return []*ast.Ident{{Name: JsonNameToGoName(pathElements[len(pathElements)-1])}}
 }
 
 func GetInputType(functionScaffold *ast.FuncDecl) (string, error) {
@@ -319,4 +320,17 @@ func GetEmptyFile(packageName string) *ast.File {
 	}
 	file.Decls = []ast.Decl{}
 	return file
+}
+
+func JsonNameToGoName(str string) string {
+	if unicode.IsNumber(rune(str[0])) {
+		str = "number_" + str
+	}
+	if len(str) == 2 && str[1] == '_' {
+		return str
+	} else if len(str) == 1 && unicode.IsLower(rune(str[0])) {
+		return strcase.ToCamel(str) + "_"
+	} else {
+		return strcase.ToCamel(str)
+	}
 }
