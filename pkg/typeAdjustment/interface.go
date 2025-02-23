@@ -7,15 +7,16 @@ import (
 )
 
 type TypeDeterminationFunction interface {
-	CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (State, error)
+	CouldTypeBeApplied(seenTypes map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails) (State, error)
 	GetType() ast.Expr
-	GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
-	GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
+	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
+	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
 	GetRequiredImports() []string
-	SetFile(file *ast.File)
 	GetName() string
 	SetState(state []*json.RawMessage, currentPath string) error
 	GetState() ([]*json.RawMessage, error)
+	GetExtraCode() []ast.Decl
+	TypeExpansion() bool
 }
 
 type State int
