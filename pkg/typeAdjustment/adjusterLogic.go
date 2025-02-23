@@ -1,313 +1,280 @@
 package typeAdjustment
 
 import (
+	"bytes"
 	"errors"
-	"github.com/Lemonn/AstUtils"
-	"github.com/Lemonn/JSON2Go/internal/utils"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	errors2 "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
 	"go/ast"
-	"reflect"
+	"go/printer"
+	"go/token"
 	"strings"
 	"time"
 )
 
 type TypeAdjuster struct {
-	data       map[string]*fieldData.FieldData
-	inputFile  *ast.File
-	outputFile *ast.File
+	seenTypes              map[string]*fieldData.PathData
+	registeredTypeCheckers []TypeDeterminationFunction
+	skipPreviouslyFailed   bool
+	checkOnly              bool
+	startTime              time.Time
 }
 
-func NewTypeAdjuster(data map[string]*fieldData.FieldData, inputFile, outputFile *ast.File) *TypeAdjuster {
-	return &TypeAdjuster{data: data, inputFile: inputFile, outputFile: outputFile}
+func NewTypeAdjuster(seenTypes map[string]*fieldData.PathData) *TypeAdjuster {
+	return &TypeAdjuster{seenTypes: seenTypes}
 }
 
-// AdjustTypes Goes through all fields and looks at the json2go FieldData, to determine if there's a better suiting type
-// for the seen float and string values.
-// Floats which could be represented as an int, are changed to int
-// Strings which could be represented as UUID are change into uuid.UUID
-// Strings which could be represented as time, are changed into time.Time
-func (ta *TypeAdjuster) AdjustTypes(registeredTypeCheckers []TypeDeterminationFunction, skipPreviouslyFailed bool) error {
-	var foundNodes []*AstUtils.FoundNodes
-	var completed bool
-	var requiredImports []string
-	AstUtils.SearchNodes(ta.inputFile, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
-		if _, ok := (*n).(*ast.StructType); ok {
-			return true
-		} else if _, ok := (*n).(*ast.ArrayType); ok && len(parents) > 0 {
-			if _, ok := (*parents[0]).(*ast.ArrayType); !ok {
-				return true
-			}
+func (ta *TypeAdjuster) searchTypeDeterminationFunctionByName(name string) (TypeDeterminationFunction, error) {
+	for i, checker := range ta.registeredTypeCheckers {
+		if checker.GetName() == name {
+			return ta.registeredTypeCheckers[i], nil
 		}
-		return false
-	}, &completed)
-	for _, node := range foundNodes {
-		var path string
-		var ignore bool
-		for _, parent := range node.Parents {
-			if v, ok := (*parent).(*ast.TypeSpec); ok {
-				//TODO ignore nested type specs, such as inside an function
-				path += v.Name.Name
-				break
-			} else if v, ok := (*parent).(*ast.Field); ok {
-				path += "." + v.Names[0].Name
-			} else if _, ok := (*parent).(*ast.StructType); ok {
-				//Ignore nested structs
-				ignore = true
-				break
-			} else if _, ok := (*parent).(*ast.FuncType); ok {
-				ignore = true
-				break
-			}
-		}
-		if ignore {
-			continue
-		}
-
-		switch t := (*node.Node).(type) {
-		case *ast.ArrayType:
-			// Ignore if array is of type *ast.Struct
-			expr, err := utils.WalkExpressions(&t.Elt)
-			if err != nil {
-				return err
-			} else if reflect.TypeOf(expr) == reflect.TypeOf(&ast.StructType{}) {
-				continue
-			}
-			e := ast.Expr(t)
-			localRequiredImports, err := ta.runTypeCheckers(registeredTypeCheckers, path, path, &e)
-			if err != nil {
-				return err
-			}
-			requiredImports = append(requiredImports, localRequiredImports...)
-		case *ast.StructType:
-			for _, field := range t.Fields.List {
-				localRequiredImports, err := ta.runTypeCheckers(registeredTypeCheckers, path+"."+field.Names[0].Name, field.Names[0].Name, &field.Type)
-				if err != nil {
-					return err
-				}
-				requiredImports = append(requiredImports, localRequiredImports...)
-			}
-		}
-
 	}
-	AstUtils.AddMissingImports(ta.outputFile, requiredImports)
+	return nil, errors.New("type adjustment function not found")
+}
+
+func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDeterminationFunction) *ast.FuncDecl {
+	pathElements := strings.Split(path, ".")
+	return &ast.FuncDecl{
+		Name: &ast.Ident{
+			Name: "UnMarshall" + pathElements[len(pathElements)-1],
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: "baseValue",
+							},
+						},
+						Type: ta.getOriginalType(path),
+					},
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Type: checker.GetType(),
+					},
+					{
+						Type: &ast.Ident{
+							Name: "error",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{},
+		},
+	}
+}
+
+func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminationFunction) *ast.FuncDecl {
+	pathElements := strings.Split(path, ".")
+	return &ast.FuncDecl{
+		Name: &ast.Ident{
+			Name: "Marshall" + pathElements[len(pathElements)-1],
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: "baseValue",
+							},
+						},
+						Type: checker.GetType(),
+					},
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Type: ta.getOriginalType(path),
+					},
+					{
+						Type: &ast.Ident{
+							Name: "error",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{},
+		},
+	}
+}
+
+func (ta *TypeAdjuster) getOriginalType(path string) ast.Expr {
+	var Type fieldData.Type
+	if len(ta.seenTypes[path].Types) >= 0 {
+		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
+	}
+	for Type = range ta.seenTypes[path].Types {
+		break
+	}
+	if len(ta.seenTypes[path].Types[Type]) >= 1 {
+		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
+	}
+	pathElements := strings.Split(path, ".")
+	switch Type {
+	case fieldData.Field:
+		return &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}}
+	case fieldData.EmptyArray:
+		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
+	case fieldData.EmptyStruct:
+		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
+	default:
+		return &ast.Ident{Name: Type.String()}
+	}
+}
+
+func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunction) error {
+	unmarshallFunction, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
+	if err != nil {
+		return err
+	}
+
+	unmarshallFunctionOutput := bytes.NewBuffer([]byte{})
+	if err := printer.Fprint(unmarshallFunctionOutput, token.NewFileSet(), unmarshallFunction); err != nil {
+		return err
+	}
+
+	marshallFunction, err := checker.GenerateUnmarshall(ta.getMarshallScaffold(path, checker))
+	if err != nil {
+		return err
+	}
+
+	marshallFunctionOutput := bytes.NewBuffer([]byte{})
+	if err := printer.Fprint(marshallFunctionOutput, token.NewFileSet(), marshallFunction); err != nil {
+		return err
+	}
+
+	ta.seenTypes[path].TypeAdjusterData.ParseFunctions = &fieldData.ParseFunctions{
+		Unmarshall:        unmarshallFunctionOutput.String(),
+		UnmarshallImports: nil,
+		Marshall:          marshallFunctionOutput.String(),
+		MarshallImports:   nil,
+	}
 	return nil
 }
 
-func (ta *TypeAdjuster) runTypeCheckers(registeredTypeCheckers []TypeDeterminationFunction, path string, name string, e *ast.Expr) ([]string, error) {
-	var requiredImports []string
-	var typeReplaced bool
+func (ta *TypeAdjuster) getTypeString(checker TypeDeterminationFunction) (string, error) {
+	marshallFunctionOutput := bytes.NewBuffer([]byte{})
+	if err := printer.Fprint(marshallFunctionOutput, token.NewFileSet(), checker.GetType()); err != nil {
+		return "", err
+	}
+	return marshallFunctionOutput.String(), nil
+}
 
-	json2GoTag := ta.data[path]
-	if json2GoTag == nil || len(json2GoTag.SeenValues) == 0 {
-		return nil, nil
+func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
+	var runCheckersOnly bool
+	//TODO set the required imports
+	//Handle case were there is an active type replacement
+	if ta.seenTypes[path].TypeAdjusterData != nil && ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster != nil {
+		//TODO set checker state
+		checker, err := ta.searchTypeDeterminationFunctionByName(*ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster)
+		if err != nil {
+			return errors2.ActiveAdjusterNotFoundError{}
+		}
+		state, err := checker.CouldTypeBeApplied(ta.seenTypes[path].Types)
+		if err != nil {
+			//TODO check for complex type change error
+			//TODO we could potentially avoid this for the time type, if we start to support both types.
+			return err
+		}
+		if state == StateApplicable {
+			if checker.TypeExpansion() {
+				err := ta.setFunctions(path, checker)
+				if err != nil {
+					return err
+				}
+				//TODO set TypeExpansionError
+			}
+			checkerState, err := checker.GetState()
+			if err != nil {
+				return err
+			}
+			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = checkerState
+			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
+			runCheckersOnly = true
+		} else {
+			//TODO set error for type change
+		}
 	}
 
-	// If a checker is active from a previous run, prefer this checker over all others. Only if this one fails,
-	// run the others
-	if json2GoTag.NameOfActiveTypeAdjuster != nil {
-		for _, checker := range registeredTypeCheckers {
-			if checker.GetName() == *json2GoTag.NameOfActiveTypeAdjuster {
-				runCheckerState, imp, err := ta.runChecker(checker, json2GoTag, path, e, typeReplaced)
-				if err != nil {
-					return nil, err
-				}
-				if runCheckerState == StateApplicable {
-					requiredImports = append(requiredImports, imp...)
-					typeReplaced = true
-					break
-				} else if runCheckerState == StateFailed {
-					//TODO log
+	for _, checker := range ta.registeredTypeCheckers {
+		if ta.checkerExcluded(path, checker) {
+			continue
+		}
+
+		state, err := checker.CouldTypeBeApplied(ta.seenTypes[path].Types)
+		if err != nil {
+			return err
+		}
+		if state == StateApplicable && !runCheckersOnly && !ta.checkOnly {
+			checkerName := checker.GetName()
+			checkerState, err := checker.GetState()
+			if err != nil {
+				return err
+			}
+			typeString, err := ta.getTypeString(checker)
+			if err != nil {
+				return err
+			}
+			if ta.seenTypes[path].TypeAdjusterData == nil {
+				ta.seenTypes[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
+			}
+			ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster = &checkerName
+			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = checkerState
+			ta.seenTypes[path].TypeAdjusterData.ActiveType = &typeString
+			ta.seenTypes[path].TypeAdjusterData.SetTimestamp = ta.startTime.Unix()
+			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
+
+			err = ta.setFunctions(path, checker)
+			if err != nil {
+				return err
+			}
+
+		} else if state == StateFailed {
+			if ta.seenTypes[path].TypeAdjusterData == nil {
+				ta.seenTypes[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
+			}
+			if ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes == nil {
+				ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes = map[string]int64{}
+			}
+			ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes[checker.GetName()] = ta.startTime.Unix()
+		}
+
+		if state == StateApplicable || state == StateUndecided {
+			runCheckersOnly = true
+		}
+	}
+
+	return nil
+}
+
+func (ta *TypeAdjuster) checkerExcluded(path string, checker TypeDeterminationFunction) bool {
+	if ta.seenTypes[path].TypeAdjusterData != nil {
+		//Check if excluded by user
+		if ta.seenTypes[path].TypeAdjusterData.ExcludedTypeCheckers != nil {
+			for _, typeChecker := range ta.seenTypes[path].TypeAdjusterData.ExcludedTypeCheckers {
+				if checker.GetName() == typeChecker {
+					return true
 				}
 			}
 		}
-	}
 
-	// Is always run. But when typeReplaced is set. It only serves the purpose to populate the CheckedNonMatchingTypes
-	// field of FieldData.
-	for _, checker := range registeredTypeCheckers {
-		runCheckerState, i, err := ta.runChecker(checker, json2GoTag, path, e, typeReplaced)
-		if err != nil {
-			return nil, err
-		}
-		if runCheckerState == StateApplicable {
-			typeReplaced = true
-			requiredImports = append(requiredImports, i...)
-
-		} else if runCheckerState == StateUndecided {
-			typeReplaced = true
-			//TODO log this
+		//Check if excluded because of previous failure
+		if ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes != nil {
+			if _, ok := ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes[checker.GetName()]; ok {
+				return true
+			}
 		}
 	}
-	return requiredImports, nil
-}
-
-func (ta *TypeAdjuster) runChecker(checker TypeDeterminationFunction, fData *fieldData.FieldData, path string, e *ast.Expr, runCheckOnly bool) (State, []string, error) {
-	var err error
-	var requiredImports []string
-	baseName := strings.ReplaceAll(path, ".", "")
-
-	//Get input type
-	var originalType string
-	var exp *ast.Expr
-
-	expr, err := utils.WalkExpressions(e)
-	if err != nil {
-		return StateFailed, nil, err
-	}
-	//TODO extract getExprString function
-	switch e := (*expr).(type) {
-	case *ast.SelectorExpr:
-		originalType = e.Sel.Name + "." + e.X.(*ast.Ident).Name
-		exp = expr
-	case *ast.Ident:
-		originalType = e.Name
-		exp = expr
-	case *ast.InterfaceType:
-		originalType = "interface{}"
-		exp = expr
-	}
-
-	// Ignore imperviously failed checkers
-	if fData.SeenValues != nil {
-		if _, ok := fData.CheckedNonMatchingTypes[checker.GetName()]; ok {
-			return StateFailed, nil, nil
-		}
-	}
-
-	//Init checker
-	checker.SetFile(ta.outputFile)
-	err = checker.SetState(fData.TypeAdjusterData, path)
-	if err != nil {
-		return StateFailed, nil, err
-	}
-
-	state, err := checker.CouldTypeBeApplied(fData.SeenValues)
-
-	if err != nil {
-		var incompatibleCustomTypeError *j2gErrors.IncompatibleCustomTypeError
-		if errors.As(err, &incompatibleCustomTypeError) {
-			fData.Error = incompatibleCustomTypeError
-		} else {
-			return StateUndecided, nil, err
-		}
-	}
-
-	if state == StateApplicable && !runCheckOnly {
-		runCheckOnly = true
-		ri, err := ta.replaceType(fData, baseName, originalType, checker, exp, requiredImports)
-		if err != nil {
-			return state, nil, err
-		}
-		requiredImports = append(requiredImports, ri...)
-	} else if state == StateUndecided {
-		return state, nil, nil
-	} else {
-		if fData.CheckedNonMatchingTypes == nil {
-			fData.CheckedNonMatchingTypes = map[string]int64{}
-		}
-		fData.CheckedNonMatchingTypes[checker.GetName()] = time.Now().Unix()
-	}
-	return state, requiredImports, nil
-}
-
-// TODO look if all params are really needed
-func (ta *TypeAdjuster) replaceType(json2GoTag *fieldData.FieldData, baseName string, originalType string, checker TypeDeterminationFunction, exp *ast.Expr, requiredImports []string) ([]string, error) {
-	//Set FieldData
-	json2GoTag.ParseFunctions = &fieldData.ParseFunctions{
-		FromTypeParseFunction: "from" + baseName,
-		ToTypeParseFunction:   "to" + baseName,
-	}
-	json2GoTag.BaseType = &originalType
-	checkerName := checker.GetName()
-	json2GoTag.NameOfActiveTypeAdjuster = &checkerName
-
-	fromTypeFunction, err := checker.GenerateFromTypeFunction(&ast.FuncDecl{
-		Name: &ast.Ident{
-			Name: json2GoTag.ParseFunctions.FromTypeParseFunction,
-		},
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Names: []*ast.Ident{
-							{
-								Name: "baseValue",
-							},
-						},
-						Type: &ast.Ident{
-							Name: originalType,
-						},
-					},
-				},
-			},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Type: checker.GetType(),
-					},
-					{
-						Type: &ast.Ident{
-							Name: "error",
-						},
-					},
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	toTypeFunction, err := checker.GenerateToTypeFunction(&ast.FuncDecl{
-		Name: &ast.Ident{
-			Name: json2GoTag.ParseFunctions.ToTypeParseFunction,
-		},
-		Type: &ast.FuncType{
-			Params: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Names: []*ast.Ident{
-							{
-								Name: "baseValue",
-							},
-						},
-						Type: checker.GetType(),
-					},
-				},
-			},
-			Results: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Type: &ast.Ident{
-							Name: originalType,
-						},
-					},
-					{
-						Type: &ast.Ident{
-							Name: "error",
-						},
-					},
-				},
-			},
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	ta.outputFile.Decls = append(ta.outputFile.Decls, fromTypeFunction)
-	ta.outputFile.Decls = append(ta.outputFile.Decls, toTypeFunction)
-	*exp = checker.GetType()
-	json2GoTag.BaseType = &originalType
-	json2GoTag.TypeAdjusterData, err = checker.GetState()
-	if err != nil {
-		return nil, err
-	}
-	requiredImports = append(requiredImports, checker.GetRequiredImports()...)
-	return requiredImports, nil
+	return false
 }
