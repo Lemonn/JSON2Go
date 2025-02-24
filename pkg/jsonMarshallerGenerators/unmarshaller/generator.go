@@ -1,32 +1,179 @@
 package unmarshaller
 
 import (
-	"errors"
-	"fmt"
-	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
-	"go/token"
-	"reflect"
+	"strings"
 	"unicode"
 )
 
 type Generator struct {
-	data       map[string]*fieldData.FieldData
-	added      bool
-	inputFile  *ast.File
-	outputFile *ast.File
+	seenTypes      map[string]*fieldData.PathData
+	added          bool
+	structPrefixes map[string]string
 }
 
-func NewGenerator(data map[string]*fieldData.FieldData, inputFile, outputFile *ast.File) *Generator {
+func NewGenerator(seenTypes map[string]*fieldData.PathData) *Generator {
 	return &Generator{
-		data:       data,
-		added:      false,
-		inputFile:  inputFile,
-		outputFile: outputFile,
+		seenTypes: seenTypes,
 	}
 }
 
+type FieldDetails struct {
+	Path          string
+	LevelOfArrays int
+}
+
+func (g *Generator) getBaseType(path string) (expr ast.Expr) {
+	//TODO error on path not found
+	if len(g.seenTypes[path].Types) == 1 {
+		var Type fieldData.Type
+		for Type, _ = range g.seenTypes[path].Types {
+			break
+		}
+		if len(g.seenTypes[path].Types[Type]) == 1 {
+			pathElements := strings.Split(path, ".")
+			if Type == fieldData.Field {
+				if v, ok := g.structPrefixes[pathElements[len(pathElements)-1]]; ok {
+					expr = &ast.SelectorExpr{
+						X:   &ast.StarExpr{X: &ast.Ident{Name: v}},
+						Sel: &ast.Ident{Name: pathElements[len(pathElements)-1]},
+					}
+				} else {
+					//TODO do not know if this is correct
+					expr = &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}, Sel: &ast.Ident{Name: pathElements[len(pathElements)-1]}}}
+
+				}
+			} else if Type == fieldData.EmptyArray {
+				expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			} else if Type == fieldData.EmptyStruct {
+				expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			} else {
+				expr = &ast.Ident{Name: string(Type)}
+			}
+		} else {
+			expr = &ast.SelectorExpr{
+				X: &ast.Ident{
+					Name: "json",
+				},
+				Sel: &ast.Ident{
+					Name: "RawMessage",
+				},
+			}
+		}
+	} else {
+		expr = &ast.SelectorExpr{
+			X: &ast.Ident{
+				Name: "json",
+			},
+			Sel: &ast.Ident{
+				Name: "RawMessage",
+			},
+		}
+	}
+
+	return expr
+}
+
+func (g *Generator) isStruct(path string) bool {
+	if len(g.seenTypes[path].Types) == 1 {
+		var Type fieldData.Type
+		for Type, _ = range g.seenTypes[path].Types {
+			break
+		}
+		if len(g.seenTypes[path].Types[Type]) == 1 {
+			if Type == fieldData.Field {
+				return true
+			} else {
+				return false
+			}
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
+func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
+	//rawJsonMsg := false
+	var err error
+	var decls []ast.Decl
+	var imports []string
+
+	if g.seenTypes[path].TypeAdjusterData != nil {
+		//TODO only set to rawMsg if the field is of struct type or mixed type, not if it is of base type such as int, string, etc.
+		//rawJsonMsg = true
+	}
+
+	var stmts []ast.Stmt
+
+	//TODO basic field vs not basic field, is for the fact, that a not basic field could return an additional elements error
+	if g.isStruct(path) && g.seenTypes[path].TypeAdjusterData != nil && g.seenTypes[path].TypeAdjusterData.ActiveType != nil {
+		//TODO struct that is replaces as a whole. This case is not yet implemented
+	} else if g.isStruct(path) {
+		stmts, imports, err = g.structGenerator(path)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		stmts, imports, err = g.arrayGenerator(path)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if len(stmts) != 0 {
+		decls = append(decls, &ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: []*ast.Field{
+					{
+						Names: []*ast.Ident{
+							{
+								Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
+							},
+						},
+						Type: g.getFieldType(path, 1),
+					},
+				},
+			},
+			Name: &ast.Ident{
+				Name: "UnmarshalJSON",
+			},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Names: []*ast.Ident{
+								{
+									Name: "bytes",
+								},
+							},
+							Type: &ast.ArrayType{
+								Elt: &ast.Ident{
+									Name: "byte",
+								},
+							},
+						},
+					},
+				},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: &ast.Ident{
+								Name: "error",
+							},
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{List: stmts},
+		})
+	}
+
+	return decls, imports, nil
+}
+
+/*
 func (g *Generator) Generate() error {
 	var foundNodes []*AstUtils.FoundNodes
 	var completed bool
@@ -389,3 +536,4 @@ func (g *Generator) Generate() error {
 	AstUtils.AddMissingImports(g.outputFile, []string{"encoding/json"})
 	return nil
 }
+*/

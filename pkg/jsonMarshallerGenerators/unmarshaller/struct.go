@@ -1,16 +1,622 @@
 package unmarshaller
 
 import (
-	"errors"
-	"fmt"
-	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/token"
+	"strings"
 	"unicode"
 )
 
+func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
+	var stmts []ast.Stmt
+	var required bool
+
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						{
+							Name: "data",
+						},
+					},
+					Type: &ast.MapType{
+						Key: &ast.Ident{
+							Name: "string",
+						},
+						Value: &ast.SelectorExpr{
+							X: &ast.Ident{
+								Name: "json",
+							},
+							Sel: &ast.Ident{
+								Name: "RawMessage",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.VAR,
+			Specs: []ast.Spec{
+				&ast.ValueSpec{
+					Names: []*ast.Ident{
+						{
+							Name: "joinedErrors",
+						},
+					},
+					Type: &ast.Ident{
+						Name: "error",
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.AssignStmt{
+		Lhs: []ast.Expr{
+			&ast.Ident{
+				Name: "err",
+			},
+		},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			&ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X: &ast.Ident{
+						Name: "json",
+					},
+					Sel: &ast.Ident{
+						Name: "Unmarshal",
+					},
+				},
+				Args: []ast.Expr{
+					&ast.Ident{
+						Name: "bytes",
+					},
+					&ast.UnaryExpr{
+						Op: token.AND,
+						X: &ast.Ident{
+							Name: "data",
+						},
+					},
+				},
+			},
+		},
+	})
+	stmts = append(stmts, &ast.IfStmt{
+		Cond: &ast.BinaryExpr{
+			X: &ast.Ident{
+				Name: "err",
+			},
+			Op: token.NEQ,
+			Y: &ast.Ident{
+				Name: "nil",
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						&ast.Ident{
+							Name: "err",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	var Level int
+	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+		break
+	}
+	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
+		levelOfArrays := g.getLevelOfArrays(fieldPath)
+
+		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].TypeAdjusterData.ActiveType != nil {
+			required = true
+			stmts = append(stmts, &ast.IfStmt{
+				Init: &ast.AssignStmt{
+					Lhs: []ast.Expr{
+						&ast.Ident{
+							Name: "value",
+						},
+						&ast.Ident{
+							Name: "ok",
+						},
+					},
+					Tok: token.DEFINE,
+					Rhs: []ast.Expr{
+						&ast.IndexExpr{
+							X: &ast.Ident{
+								Name: "data",
+							},
+							Index: &ast.BasicLit{
+								Kind:  token.STRING,
+								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+							},
+						},
+					},
+				},
+				Cond: &ast.Ident{
+					Name: "ok",
+				},
+				Body: &ast.BlockStmt{
+					List: func() []ast.Stmt {
+						if levelOfArrays == 0 {
+							return g.handleField(fieldPath)
+						} else {
+							return g.handleArrayField(fieldPath)
+						}
+					}(),
+				},
+			})
+		} else if !g.isStruct(fieldPath) {
+			stmts = append(stmts, &ast.IfStmt{
+				Init: &ast.AssignStmt{
+					Lhs: []ast.Expr{
+						&ast.Ident{
+							Name: "value",
+						},
+						&ast.Ident{
+							Name: "ok",
+						},
+					},
+					Tok: token.DEFINE,
+					Rhs: []ast.Expr{
+						&ast.IndexExpr{
+							X: &ast.Ident{
+								Name: "data",
+							},
+							Index: &ast.BasicLit{
+								Kind:  token.STRING,
+								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+							},
+						},
+					},
+				},
+				Cond: &ast.Ident{
+					Name: "ok",
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{
+								&ast.Ident{
+									Name: "err",
+								},
+							},
+							Tok: token.ASSIGN,
+							Rhs: []ast.Expr{
+								&ast.CallExpr{
+									Fun: &ast.SelectorExpr{
+										X: &ast.Ident{
+											Name: "json",
+										},
+										Sel: &ast.Ident{
+											Name: "Unmarshal",
+										},
+									},
+									Args: []ast.Expr{
+										&ast.Ident{
+											Name: "value",
+										},
+										&ast.UnaryExpr{
+											Op: token.AND,
+											X: &ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
+												},
+												Sel: &ast.Ident{
+													Name: g.getFieldName(fieldPath),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						&ast.IfStmt{
+							Cond: &ast.BinaryExpr{
+								X: &ast.Ident{
+									Name: "err",
+								},
+								Op: token.NEQ,
+								Y: &ast.Ident{
+									Name: "nil",
+								},
+							},
+							Body: &ast.BlockStmt{
+								List: []ast.Stmt{
+									&ast.DeclStmt{
+										Decl: &ast.GenDecl{
+											Tok: token.VAR,
+											Specs: []ast.Spec{
+												&ast.ValueSpec{
+													Names: []*ast.Ident{
+														{
+															Name: "additionalElementsError",
+														},
+													},
+													Type: &ast.StarExpr{
+														X: &ast.Ident{
+															Name: "AdditionalElementsError",
+														},
+													},
+												},
+											},
+										},
+									},
+									&ast.IfStmt{
+										Cond: &ast.CallExpr{
+											Fun: &ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: "errors",
+												},
+												Sel: &ast.Ident{
+													Name: "As",
+												},
+											},
+											Args: []ast.Expr{
+												&ast.Ident{
+													Name: "err",
+												},
+												&ast.UnaryExpr{
+													Op: token.AND,
+													X: &ast.Ident{
+														Name: "additionalElementsError",
+													},
+												},
+											},
+										},
+										Body: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.AssignStmt{
+													Lhs: []ast.Expr{
+														&ast.Ident{
+															Name: "joinedErrors",
+														},
+													},
+													Tok: token.ASSIGN,
+													Rhs: []ast.Expr{
+														&ast.CallExpr{
+															Fun: &ast.SelectorExpr{
+																X: &ast.Ident{
+																	Name: "errors",
+																},
+																Sel: &ast.Ident{
+																	Name: "Join",
+																},
+															},
+															Args: []ast.Expr{
+																&ast.Ident{
+																	Name: "additionalElementsError",
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+										Else: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.ReturnStmt{
+													Results: []ast.Expr{
+														&ast.Ident{
+															Name: "err",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						&ast.ExprStmt{
+							X: &ast.CallExpr{
+								Fun: &ast.Ident{
+									Name: "delete",
+								},
+								Args: []ast.Expr{
+									&ast.Ident{
+										Name: "data",
+									},
+									&ast.BasicLit{
+										Kind:  token.STRING,
+										Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+		} else {
+			stmts = append(stmts, &ast.IfStmt{
+				Init: &ast.AssignStmt{
+					Lhs: []ast.Expr{
+						&ast.Ident{
+							Name: "value",
+						},
+						&ast.Ident{
+							Name: "ok",
+						},
+					},
+					Tok: token.DEFINE,
+					Rhs: []ast.Expr{
+						&ast.IndexExpr{
+							X: &ast.Ident{
+								Name: "data",
+							},
+							Index: &ast.BasicLit{
+								Kind:  token.STRING,
+								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+							},
+						},
+					},
+				},
+				Cond: &ast.Ident{
+					Name: "ok",
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{
+								&ast.Ident{
+									Name: "err",
+								},
+							},
+							Tok: token.ASSIGN,
+							Rhs: []ast.Expr{
+								&ast.CallExpr{
+									Fun: &ast.SelectorExpr{
+										X: &ast.Ident{
+											Name: "json",
+										},
+										Sel: &ast.Ident{
+											Name: "Unmarshal",
+										},
+									},
+									Args: []ast.Expr{
+										&ast.Ident{
+											Name: "value",
+										},
+										&ast.UnaryExpr{
+											Op: token.AND,
+											X: &ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
+												},
+												Sel: &ast.Ident{
+													Name: g.getFieldName(path),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						&ast.IfStmt{
+							Cond: &ast.BinaryExpr{
+								X: &ast.Ident{
+									Name: "err",
+								},
+								Op: token.NEQ,
+								Y: &ast.Ident{
+									Name: "nil",
+								},
+							},
+							Body: &ast.BlockStmt{
+								List: []ast.Stmt{
+									&ast.DeclStmt{
+										Decl: &ast.GenDecl{
+											Tok: token.VAR,
+											Specs: []ast.Spec{
+												&ast.ValueSpec{
+													Names: []*ast.Ident{
+														{
+															Name: "additionalElementsError",
+														},
+													},
+													Type: &ast.StarExpr{
+														X: &ast.Ident{
+															Name: "AdditionalElementsError",
+														},
+													},
+												},
+											},
+										},
+									},
+									&ast.IfStmt{
+										Cond: &ast.CallExpr{
+											Fun: &ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: "errors",
+												},
+												Sel: &ast.Ident{
+													Name: "As",
+												},
+											},
+											Args: []ast.Expr{
+												&ast.Ident{
+													Name: "err",
+												},
+												&ast.UnaryExpr{
+													Op: token.AND,
+													X: &ast.Ident{
+														Name: "additionalElementsError",
+													},
+												},
+											},
+										},
+										Body: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.AssignStmt{
+													Lhs: []ast.Expr{
+														&ast.Ident{
+															Name: "joinedErrors",
+														},
+													},
+													Tok: token.ASSIGN,
+													Rhs: []ast.Expr{
+														&ast.CallExpr{
+															Fun: &ast.SelectorExpr{
+																X: &ast.Ident{
+																	Name: "errors",
+																},
+																Sel: &ast.Ident{
+																	Name: "Join",
+																},
+															},
+															Args: []ast.Expr{
+																&ast.Ident{
+																	Name: "joinedErrors",
+																},
+																&ast.Ident{
+																	Name: "additionalElementsError",
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+										Else: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.ReturnStmt{
+													Results: []ast.Expr{
+														&ast.Ident{
+															Name: "err",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						&ast.ExprStmt{
+							X: &ast.CallExpr{
+								Fun: &ast.Ident{
+									Name: "delete",
+								},
+								Args: []ast.Expr{
+									&ast.Ident{
+										Name: "data",
+									},
+									&ast.BasicLit{
+										Kind:  token.STRING,
+										Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+		}
+	}
+
+	if len(stmts) == 0 || !required {
+		return []ast.Stmt{}, nil, nil
+	}
+
+	// Add If statement to custom unmarshall function that checks for additional elements,
+	// and joins an error to the error list if it's the case
+	stmts = append(stmts, &ast.IfStmt{
+		Cond: &ast.BinaryExpr{
+			X: &ast.CallExpr{
+				Fun: &ast.Ident{
+					Name: "len",
+				},
+				Args: []ast.Expr{
+					&ast.Ident{
+						Name: "data",
+					},
+				},
+			},
+			Op: token.NEQ,
+			Y: &ast.BasicLit{
+				Kind:  token.INT,
+				Value: "0",
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.AssignStmt{
+					Lhs: []ast.Expr{
+						&ast.Ident{
+							Name: "joinedErrors",
+						},
+					},
+					Tok: token.ASSIGN,
+					Rhs: []ast.Expr{
+						&ast.CallExpr{
+							Fun: &ast.SelectorExpr{
+								X: &ast.Ident{
+									Name: "errors",
+								},
+								Sel: &ast.Ident{
+									Name: "Join",
+								},
+							},
+							Args: []ast.Expr{
+								&ast.Ident{
+									Name: "joinedErrors",
+								},
+								&ast.UnaryExpr{
+									Op: token.AND,
+									X: &ast.CompositeLit{
+										Type: &ast.Ident{
+											Name: "AdditionalElementsError",
+										},
+										Elts: []ast.Expr{
+											&ast.KeyValueExpr{
+												Key: &ast.Ident{
+													Name: "ParsedObj",
+												},
+												Value: &ast.BasicLit{
+													Kind:  token.STRING,
+													Value: "\"" + g.getFieldName(path) + "\"",
+												},
+											},
+											&ast.KeyValueExpr{
+												Key: &ast.Ident{
+													Name: "Elements",
+												},
+												Value: &ast.Ident{
+													Name: "data",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	// Add return statement to custom unmarshall function
+	stmts = append(stmts, &ast.ReturnStmt{
+		Results: []ast.Expr{
+			&ast.Ident{
+				Name: "joinedErrors",
+			},
+		},
+	})
+	return stmts, []string{"encoding/json", "errors", "fmt"}, nil
+}
+
+/*
 func (g *Generator) structGenerator(str *ast.StructType, path string, name string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
 	var required bool
@@ -629,6 +1235,9 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	return stmts, []string{"encoding/json", "errors", "fmt"}, nil
 }
 
+*/
+
+/*
 func handleField(fData *fieldData.FieldData, structName string, fieldName string) []ast.Stmt {
 	return []ast.Stmt{
 		&ast.DeclStmt{
@@ -783,8 +1392,198 @@ func handleField(fData *fieldData.FieldData, structName string, fieldName string
 	}
 }
 
-func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType ast.Expr, structName string, fieldName string) []ast.Stmt {
+*/
 
+func (g *Generator) getLevelOfArrays(path string) int {
+	var Type fieldData.Type
+	var Level int
+	for Type, _ = range g.seenTypes[path].Types {
+		break
+	}
+	for Level, _ = range g.seenTypes[path].Types[Type] {
+		break
+	}
+	return Level
+}
+
+func (g *Generator) getFieldType(path string, index int) ast.Expr {
+	pathElements := strings.Split(path, ".")
+	if v, ok := g.structPrefixes[pathElements[len(pathElements)-index]]; ok {
+		return &ast.SelectorExpr{
+			X:   &ast.StarExpr{X: &ast.Ident{Name: v}},
+			Sel: &ast.Ident{Name: pathElements[len(pathElements)-index]},
+		}
+	}
+	return &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}}
+}
+
+func (g *Generator) getFieldName(path string) string {
+	pathElements := strings.Split(path, ".")
+	return pathElements[len(pathElements)-1]
+}
+
+func (g *Generator) getParentFieldName(path string) string {
+	pathElements := strings.Split(path, ".")
+	return pathElements[len(pathElements)-2]
+}
+
+// TODO function to get struct and field name from path. Also respect the package in case one is given.
+func (g *Generator) handleField(path string) []ast.Stmt {
+	return []ast.Stmt{
+		&ast.DeclStmt{
+			Decl: &ast.GenDecl{
+				Tok: token.VAR,
+				Specs: []ast.Spec{
+					&ast.ValueSpec{
+						Names: []*ast.Ident{
+							{
+								Name: "unmarshalledValue",
+							},
+						},
+						Type: g.getBaseType(path),
+					},
+				},
+			},
+		},
+		&ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.Ident{
+					Name: "err",
+				},
+			},
+			Tok: token.ASSIGN,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X: &ast.Ident{
+							Name: "json",
+						},
+						Sel: &ast.Ident{
+							Name: "Unmarshal",
+						},
+					},
+					Args: []ast.Expr{
+						&ast.Ident{
+							Name: "value",
+						},
+						&ast.UnaryExpr{
+							Op: token.AND,
+							X: &ast.Ident{
+								Name: "unmarshalledValue",
+							},
+						},
+					},
+				},
+			},
+		},
+		&ast.IfStmt{
+			Cond: &ast.BinaryExpr{
+				X: &ast.Ident{
+					Name: "err",
+				},
+				Op: token.NEQ,
+				Y: &ast.Ident{
+					Name: "nil",
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.Ident{
+								Name: "err",
+							},
+						},
+					},
+				},
+			},
+		},
+		&ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.SelectorExpr{
+					X: &ast.Ident{
+						Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0])),
+					},
+					Sel: &ast.Ident{
+						Name: g.getFieldName(path),
+					},
+				},
+				&ast.Ident{
+					Name: "err",
+				},
+			},
+			Tok: token.ASSIGN,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.Ident{
+						Name: "Unmarshall" + g.getFieldName(path),
+					},
+					Args: []ast.Expr{
+						&ast.Ident{
+							Name: "unmarshalledValue",
+						},
+					},
+				},
+			},
+		},
+		&ast.IfStmt{
+			Cond: &ast.BinaryExpr{
+				X: &ast.Ident{
+					Name: "err",
+				},
+				Op: token.NEQ,
+				Y: &ast.Ident{
+					Name: "nil",
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.CallExpr{
+								Fun: &ast.SelectorExpr{
+									X: &ast.Ident{
+										Name: "errors",
+									},
+									Sel: &ast.Ident{
+										Name: "Join",
+									},
+								},
+								Args: []ast.Expr{
+									&ast.Ident{
+										Name: "joinedErrors",
+									},
+									&ast.Ident{
+										Name: "err",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		&ast.ExprStmt{
+			X: &ast.CallExpr{
+				Fun: &ast.Ident{
+					Name: "delete",
+				},
+				Args: []ast.Expr{
+					&ast.Ident{
+						Name: "data",
+					},
+					&ast.BasicLit{
+						Kind:  token.STRING,
+						Value: "\"" + g.seenTypes[path].JsonFieldName + "\"",
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) handleArrayField(path string) []ast.Stmt {
+	levelOfArrays := g.getLevelOfArrays(path)
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -796,7 +1595,7 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 								Name: "result",
 							},
 						},
-						Type: fieldType,
+						Type: g.getBaseType(path),
 					},
 				},
 			},
@@ -814,7 +1613,7 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 			Rhs: []ast.Expr{
 				&ast.CallExpr{
 					Fun: &ast.Ident{
-						Name: fData.ParseFunctions.FromTypeParseFunction,
+						Name: "Unmarshall" + g.getFieldName(path),
 					},
 					Args: []ast.Expr{
 						&ast.Ident{
@@ -846,7 +1645,7 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 				},
 			},
 		},
-		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}, &ast.Ident{Name: "result"}, "index"),
+		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, &ast.Ident{Name: "result"}, "index"),
 		&ast.ExprStmt{
 			X: &ast.CallExpr{
 				Fun: &ast.Ident{
@@ -858,12 +1657,13 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 					},
 					&ast.BasicLit{
 						Kind:  token.STRING,
-						Value: "\"" + *fData.JsonFieldName + "\"",
+						Value: "\"" + g.seenTypes[path].JsonFieldName + "\"",
 					},
 				},
 			},
 		},
 	}
+	fieldType := g.getFieldType(path, 2)
 	return []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -875,7 +1675,7 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 								Name: "lt",
 							},
 						},
-						Type: utils.GeneratedNestedArray(levelOfArrays, &ast.Ident{Name: *fData.BaseType}),
+						Type: utils.GeneratedNestedArray(levelOfArrays, g.getBaseType(path)),
 					},
 				},
 			},
@@ -933,10 +1733,167 @@ func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType a
 				},
 			},
 		},
-		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}, fieldType),
+		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, fieldType),
 	}
 }
 
+/*
+func handleArrayField(levelOfArrays int, fData *fieldData.FieldData, fieldType ast.Expr, structName string, fieldName string) []ast.Stmt {
+
+		innerStmts := []ast.Stmt{
+			&ast.DeclStmt{
+				Decl: &ast.GenDecl{
+					Tok: token.VAR,
+					Specs: []ast.Spec{
+						&ast.ValueSpec{
+							Names: []*ast.Ident{
+								&ast.Ident{
+									Name: "result",
+								},
+							},
+							Type: fieldType,
+						},
+					},
+				},
+			},
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{
+					&ast.Ident{
+						Name: "result",
+					},
+					&ast.Ident{
+						Name: "err",
+					},
+				},
+				Tok: token.ASSIGN,
+				Rhs: []ast.Expr{
+					&ast.CallExpr{
+						Fun: &ast.Ident{
+							Name: fData.ParseFunctions.FromTypeParseFunction,
+						},
+						Args: []ast.Expr{
+							&ast.Ident{
+								Name: "baseValue",
+							},
+						},
+					},
+				},
+			},
+			&ast.IfStmt{
+				Cond: &ast.BinaryExpr{
+					X: &ast.Ident{
+						Name: "err",
+					},
+					Op: token.NEQ,
+					Y: &ast.Ident{
+						Name: "nil",
+					},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ReturnStmt{
+							Results: []ast.Expr{
+								&ast.Ident{
+									Name: "err",
+								},
+							},
+						},
+					},
+				},
+			},
+			utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}, &ast.Ident{Name: "result"}, "index"),
+			&ast.ExprStmt{
+				X: &ast.CallExpr{
+					Fun: &ast.Ident{
+						Name: "delete",
+					},
+					Args: []ast.Expr{
+						&ast.Ident{
+							Name: "data",
+						},
+						&ast.BasicLit{
+							Kind:  token.STRING,
+							Value: "\"" + *fData.JsonFieldName + "\"",
+						},
+					},
+				},
+			},
+		}
+		return []ast.Stmt{
+			&ast.DeclStmt{
+				Decl: &ast.GenDecl{
+					Tok: token.VAR,
+					Specs: []ast.Spec{
+						&ast.ValueSpec{
+							Names: []*ast.Ident{
+								{
+									Name: "lt",
+								},
+							},
+							Type: utils.GeneratedNestedArray(levelOfArrays, &ast.Ident{Name: *fData.BaseType}),
+						},
+					},
+				},
+			},
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{
+					&ast.Ident{
+						Name: "err",
+					},
+				},
+				Tok: token.ASSIGN,
+				Rhs: []ast.Expr{
+					&ast.CallExpr{
+						Fun: &ast.SelectorExpr{
+							X: &ast.Ident{
+								Name: "json",
+							},
+							Sel: &ast.Ident{
+								Name: "Unmarshal",
+							},
+						},
+						Args: []ast.Expr{
+							&ast.Ident{
+								Name: "value",
+							},
+							&ast.UnaryExpr{
+								Op: token.AND,
+								X: &ast.Ident{
+									Name: "lt",
+								},
+							},
+						},
+					},
+				},
+			},
+			&ast.IfStmt{
+				Cond: &ast.BinaryExpr{
+					X: &ast.Ident{
+						Name: "err",
+					},
+					Op: token.NEQ,
+					Y: &ast.Ident{
+						Name: "nil",
+					},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ReturnStmt{
+							Results: []ast.Expr{
+								&ast.Ident{
+									Name: "err",
+								},
+							},
+						},
+					},
+				},
+			},
+			utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}, fieldType),
+		}
+	}
+*/
+
+/*
 func addGetAllErrorsOfTypeFunction(file *ast.File) {
 	file.Decls = append(file.Decls, &ast.FuncDecl{
 		Name: &ast.Ident{
@@ -1743,3 +2700,6 @@ func addCheckForFirstErrorNotOfTypeTFunction(file *ast.File) {
 		},
 	})
 }
+
+
+*/

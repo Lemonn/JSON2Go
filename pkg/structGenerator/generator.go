@@ -5,9 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
+	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment/buildin"
+	"slices"
+
+	//"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -15,28 +21,158 @@ import (
 	"go/token"
 	"math"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type StructGenerator struct {
-	seenTypes map[string]*fieldData.PathData
-	file      *ast.File
-	startTime time.Time
+	seenTypes         map[string]*fieldData.PathData
+	file              *ast.File
+	startTime         time.Time
+	files             map[string]*FileData
+	stackedMarshaller map[string]*ast.File
 }
 
-func NewCodeGenerator(data map[string]*fieldData.FieldData) *StructGenerator {
-	if data == nil {
-		data = make(map[string]*fieldData.FieldData)
+type FileData struct {
+	file *ast.File
+	fSet *token.FileSet
+}
+
+/*
+func (f *FileData) getFileByPackage(packageName string) *FileData {
+	if v, ok := f[packageName]; ok {
+		return v
+	} else {
+		fSet := token.NewFileSet()
+		file, err := parser.ParseFile(fSet, "", "package test", parser.ParseComments)
+		if err != nil {
+			panic(err)
+		}
+		f[packageName] = &FileData{
+			file: file,
+			fSet: fSet,
+		}
+		return f[packageName]
 	}
+}
+
+*/
+
+func (f *FileData) handleImports(Package string) error {
+	var foundNodes []*AstUtils.FoundNodes
+	var completed bool
+	pathElements := strings.Split(Package, ".")
+	AstUtils.SearchNodes(f.file, &foundNodes, []*ast.Node{}, func(n *ast.Node, parents []*ast.Node, completed *bool) bool {
+		if v, ok := (*n).(*ast.StarExpr); ok {
+			output := bytes.NewBuffer([]byte{})
+			fset := token.NewFileSet()
+			if err := printer.Fprint(output, fset, v); err != nil {
+
+			}
+			if vi, ok := v.X.(*ast.Ident); ok && vi.Name == pathElements[len(pathElements)-1] {
+				return true
+			}
+		}
+		return false
+	}, &completed)
+
+	return nil
+}
+
+var _ = &ast.File{
+	Package: 1,
+	Name: &ast.Ident{
+		Name: "main",
+	},
+	Decls: []ast.Decl{
+		&ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: &ast.Ident{
+						Name: "B",
+					},
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{
+							List: []*ast.Field{
+								&ast.Field{
+									Names: []*ast.Ident{
+										&ast.Ident{
+											Name: "Inner",
+										},
+									},
+									Type: &ast.StarExpr{
+										X: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "BInner",
+											},
+											Sel: &ast.Ident{
+												Name: "Inner",
+											},
+										},
+									},
+									Tag: &ast.BasicLit{
+										Kind:  token.STRING,
+										Value: "`json:\"Inner,omitempty\"`",
+									},
+								},
+								&ast.Field{
+									Names: []*ast.Ident{
+										&ast.Ident{
+											Name: "H",
+										},
+									},
+									Type: &ast.StarExpr{
+										X: &ast.Ident{
+											Name: "H",
+										},
+									},
+									Tag: &ast.BasicLit{
+										Kind:  token.STRING,
+										Value: "`json:\"H,omitempty\"`",
+									},
+								},
+								&ast.Field{
+									Names: []*ast.Ident{
+										&ast.Ident{
+											Name: "Duplicate",
+										},
+									},
+									Type: &ast.StarExpr{
+										X: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "BDuplicate",
+											},
+											Sel: &ast.Ident{
+												Name: "Duplicate",
+											},
+										},
+									},
+									Tag: &ast.BasicLit{
+										Kind:  token.STRING,
+										Value: "`json:\"Duplicate,omitempty\"`",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+}
+
+func NewCodeGenerator() *StructGenerator {
 	return &StructGenerator{
-		startTime: time.Now(),
+		startTime:         time.Now(),
+		seenTypes:         make(map[string]*fieldData.PathData),
+		files:             make(map[string]*FileData),
+		stackedMarshaller: map[string]*ast.File{},
 	}
 }
 
-func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, path string, structName string, typeAdjusters []typeAdjustment.TypeDeterminationFunction) error {
+func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, path string, structName string) error {
 	var JsonData interface{}
 	var err error
 	err = json.Unmarshal(jsonData, &JsonData)
@@ -48,7 +184,7 @@ func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, p
 		return err
 	}
 
-	err = s.testNew(path, typeAdjusters)
+	err = s.testNew(path)
 	if err != nil {
 		return err
 	}
@@ -89,7 +225,11 @@ func (s *StructGenerator) getFieldType(path string) (expr ast.Expr, structType b
 			pathElements := strings.Split(path, ".")
 			if Type == fieldData.Field {
 				structType = true
-				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}})
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}, Sel: &ast.Ident{Name: pathElements[len(pathElements)-1]}}})
+			} else if Type == fieldData.EmptyArray {
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+			} else if Type == fieldData.EmptyStruct {
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 			} else {
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.Ident{Name: string(Type)})
 			}
@@ -151,8 +291,17 @@ func (s *StructGenerator) markNamingConflicts() {
 					break
 				}
 				if rPath[p] == 1 {
-					slices.Reverse([]byte(p))
-					s.seenTypes[path].Package = &p
+					f := strings.Split(p, ".")
+					slices.Reverse(f)
+					var k string
+					for _, s2 := range f {
+						if k == "" {
+							k = s2
+						} else {
+							k = k + "." + s2
+						}
+					}
+					s.seenTypes[path].Package = &k
 					break
 				}
 				p += "." + pathElements[len(pathElements)-i-1]
@@ -174,39 +323,53 @@ func (s *StructGenerator) setOmitempty() {
 
 */
 
-func (s *StructGenerator) testNew(filePath string, typeAdjusters []typeAdjustment.TypeDeterminationFunction) error {
-	s.markNamingConflicts()
+func (s *StructGenerator) testNew(filePath string) error {
+	//s.markNamingConflicts()
 	startPath, err := s.getStartPath()
 	if err != nil {
 		return err
 	}
 
 	pathsToProcess := []string{startPath}
-	files := make(map[string]*ast.File)
-	fset := token.NewFileSet()
-	defaultFile, err := parser.ParseFile(fset, "", "package test", parser.ParseComments)
-	if err != nil {
-		panic(err)
-	}
 
 	for {
 		for _, path := range pathsToProcess {
 			var file *ast.File
-
-			if s.seenTypes[path].Package != nil {
-				if _, ok := files[*s.seenTypes[path].Package]; ok {
-					file = files[*s.seenTypes[path].Package]
-				} else {
-					fset := token.NewFileSet()
-					file, err = parser.ParseFile(fset, "", "package "+strings.ReplaceAll(*s.seenTypes[path].Package, ".", ""), parser.ParseComments)
-					if err != nil {
-						return err
+			/*
+				if s.seenTypes[path].Package != nil {
+					if _, ok := s.files[*s.seenTypes[path].Package]; ok {
+						file = s.files[*s.seenTypes[path].Package].file
+					} else {
+						fset := token.NewFileSet()
+						file, err = parser.ParseFile(fset, "", "package "+strings.ReplaceAll(*s.seenTypes[path].Package, ".", ""), parser.ParseComments)
+						if err != nil {
+							return err
+						}
+						s.files[*s.seenTypes[path].Package] = &FileData{
+							file: file,
+							fSet: fset,
+						}
 					}
-					files[*s.seenTypes[path].Package] = file
+				} else {
+					file = defaultFile
 				}
-			} else {
-				file = defaultFile
+
+			*/
+			if _, ok := s.files[path]; !ok {
+				fset := token.NewFileSet()
+				pathElements := strings.Split(path, ".")
+				file, err = parser.ParseFile(fset, "", "package "+pathElements[len(pathElements)-1], parser.ParseComments)
+				if err != nil {
+					return err
+				}
+				s.files[path] = &FileData{
+					file: file,
+					fSet: fset,
+				}
+				file = s.files[path].file
 			}
+
+			file = s.files[path].file
 			expr, structType := s.getFieldType(path)
 			if structType {
 				var fields []*ast.Field
@@ -214,11 +377,19 @@ func (s *StructGenerator) testNew(filePath string, typeAdjusters []typeAdjustmen
 				for levelOfArrays, _ = range s.seenTypes[path].Types["field"] {
 					break
 				}
+				s.stackedMarshaller[path] = file
 				for fieldPath, _ := range s.seenTypes[path].Types["field"][levelOfArrays] {
 					expr, structType = s.getFieldType(fieldPath)
 					if structType {
 						pathsToProcess = append(pathsToProcess, fieldPath)
+						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
 					}
+					ta := typeAdjustment.NewTypeAdjuster(s.seenTypes, []typeAdjustment.TypeDeterminationFunction{&buildin.UUIDTypeChecker{}}, s.startTime)
+					err := ta.AdjustTypesNew(fieldPath)
+					if err != nil {
+						return err
+					}
+
 					pathElements := strings.Split(fieldPath, ".")
 					fields = append(fields, &ast.Field{
 						Names: []*ast.Ident{{Name: pathElements[len(pathElements)-1]}},
@@ -241,7 +412,6 @@ func (s *StructGenerator) testNew(filePath string, typeAdjusters []typeAdjustmen
 					},
 				})
 			} else {
-				fmt.Println(path)
 				file.Decls = append(file.Decls, &ast.GenDecl{
 					Tok: token.TYPE,
 					Specs: []ast.Spec{
@@ -261,30 +431,45 @@ func (s *StructGenerator) testNew(filePath string, typeAdjusters []typeAdjustmen
 		}
 	}
 
-	for path, file := range files {
+	for path, file := range s.stackedMarshaller {
+		fmt.Println(path)
+		uGen := unmarshaller.NewGenerator(s.seenTypes)
+		generate, _, err := uGen.Generate(path)
+		fmt.Println(generate)
+		if err != nil {
+			return err
+		}
+		file.Decls = append(file.Decls, generate...)
+	}
+
+	for path, file := range s.files {
+		/*
+			fmt.Println(path)
+			err := file.handleImports(path)
+			if err != nil {
+				return err
+			}
+
+		*/
+
 		err = os.MkdirAll(strings.ReplaceAll(filePath+"/"+path, ".", "/"), os.ModePerm)
+		if err != nil {
+			return err
+		}
 		output := bytes.NewBuffer([]byte{})
-		fset := token.NewFileSet()
-		if err := printer.Fprint(output, fset, file); err != nil {
+		if err := printer.Fprint(output, file.fSet, file.file); err != nil {
 			return err
 		}
 		c, err := format.Source(output.Bytes())
-		err = os.WriteFile(strings.ReplaceAll(filePath+"/"+path, ".", "/")+"/testNew.go", c, 0666)
+		if err != nil {
+			return err
+		}
+		pathElements := strings.Split(path, ".")
+		err = os.WriteFile(strings.ReplaceAll(filePath+"/"+path, ".", "/")+"/"+pathElements[len(pathElements)-1]+".go", c, 0666)
 		if err != nil {
 			return err
 		}
 
-	}
-
-	output := bytes.NewBuffer([]byte{})
-	fset = token.NewFileSet()
-	if err := printer.Fprint(output, fset, defaultFile); err != nil {
-		return err
-	}
-	c, err := format.Source(output.Bytes())
-	err = os.WriteFile(filePath+"/test.go", c, 0666)
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -425,6 +610,9 @@ func (s *StructGenerator) processStruct(structData map[string]interface{}, path 
 			return err
 		}
 	}
+	if len(structData) == 0 {
+		s.setTypeAtLevel(path, fieldData.EmptyStruct, depth, "{}")
+	}
 	return nil
 }
 
@@ -450,6 +638,10 @@ func (s *StructGenerator) processSlice(sliceData []interface{}, path string, dep
 				return err
 			}
 		}
+	}
+
+	if len(sliceData) == 0 {
+		s.setTypeAtLevel(path, fieldData.EmptyArray, depth, "[]")
 	}
 
 	//TODO we need to handle empty [] array
