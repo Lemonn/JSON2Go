@@ -1,8 +1,10 @@
 package unmarshaller
 
 import (
+	"fmt"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
+	"go/parser"
 	"strings"
 	"unicode"
 )
@@ -26,6 +28,15 @@ type FieldDetails struct {
 
 func (g *Generator) getBaseType(path string) (expr ast.Expr) {
 	//TODO error on path not found
+
+	if g.seenTypes[path].ForceSourceType != nil {
+		parseExpr, err := parser.ParseExpr(*g.seenTypes[path].ForceSourceType)
+		if err != nil {
+			return nil
+		}
+		return parseExpr
+	}
+
 	if len(g.seenTypes[path].Types) == 1 {
 		var Type fieldData.Type
 		for Type, _ = range g.seenTypes[path].Types {
@@ -33,6 +44,7 @@ func (g *Generator) getBaseType(path string) (expr ast.Expr) {
 		}
 		if len(g.seenTypes[path].Types[Type]) == 1 {
 			pathElements := strings.Split(path, ".")
+			fmt.Println(Type)
 			if Type == fieldData.Field {
 				if v, ok := g.structPrefixes[pathElements[len(pathElements)-1]]; ok {
 					expr = &ast.SelectorExpr{
@@ -52,6 +64,7 @@ func (g *Generator) getBaseType(path string) (expr ast.Expr) {
 				expr = &ast.Ident{Name: string(Type)}
 			}
 		} else {
+			//TODO replace whit interface{}
 			expr = &ast.SelectorExpr{
 				X: &ast.Ident{
 					Name: "json",
@@ -62,6 +75,7 @@ func (g *Generator) getBaseType(path string) (expr ast.Expr) {
 			}
 		}
 	} else {
+		//TODO replace whit interface{}
 		expr = &ast.SelectorExpr{
 			X: &ast.Ident{
 				Name: "json",
@@ -96,15 +110,9 @@ func (g *Generator) isStruct(path string) bool {
 }
 
 func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
-	//rawJsonMsg := false
 	var err error
 	var decls []ast.Decl
 	var imports []string
-
-	if g.seenTypes[path].TypeAdjusterData != nil {
-		//TODO only set to rawMsg if the field is of struct type or mixed type, not if it is of base type such as int, string, etc.
-		//rawJsonMsg = true
-	}
 
 	var stmts []ast.Stmt
 

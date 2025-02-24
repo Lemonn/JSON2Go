@@ -8,6 +8,7 @@ import (
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment/buildin"
@@ -213,6 +214,15 @@ func (s *StructGenerator) getStartPath() (string, error) {
 func (s *StructGenerator) getFieldType(path string) (expr ast.Expr, structType bool) {
 	levelOfArrays := math.MaxInt32
 	//TODO error on path not found
+
+	if s.seenTypes[path].ForceSourceType != nil {
+		parseExpr, err := parser.ParseExpr(*s.seenTypes[path].ForceSourceType)
+		if err != nil {
+			return nil, false
+		}
+		return parseExpr, false
+	}
+
 	if len(s.seenTypes[path].Types) == 1 {
 		var Type fieldData.Type
 		for Type, _ = range s.seenTypes[path].Types {
@@ -379,15 +389,17 @@ func (s *StructGenerator) testNew(filePath string) error {
 				}
 				s.stackedMarshaller[path] = file
 				for fieldPath, _ := range s.seenTypes[path].Types["field"][levelOfArrays] {
-					expr, structType = s.getFieldType(fieldPath)
-					if structType {
-						pathsToProcess = append(pathsToProcess, fieldPath)
-						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
-					}
+					//Adjust Type
 					ta := typeAdjustment.NewTypeAdjuster(s.seenTypes, []typeAdjustment.TypeDeterminationFunction{&buildin.UUIDTypeChecker{}}, s.startTime)
 					err := ta.AdjustTypesNew(fieldPath)
 					if err != nil {
 						return err
+					}
+
+					expr, structType = s.getFieldType(fieldPath)
+					if structType {
+						pathsToProcess = append(pathsToProcess, fieldPath)
+						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
 					}
 
 					pathElements := strings.Split(fieldPath, ".")
@@ -440,6 +452,14 @@ func (s *StructGenerator) testNew(filePath string) error {
 			return err
 		}
 		file.Decls = append(file.Decls, generate...)
+
+		mGen := marshaller.NewGenerator(s.seenTypes)
+		gen, _, err := mGen.Generate(path)
+		fmt.Println(generate)
+		if err != nil {
+			return err
+		}
+		file.Decls = append(file.Decls, gen...)
 	}
 
 	for path, file := range s.files {
