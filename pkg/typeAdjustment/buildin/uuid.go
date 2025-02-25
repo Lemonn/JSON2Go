@@ -10,6 +10,10 @@ import (
 
 type UUIDTypeChecker struct{}
 
+func (u *UUIDTypeChecker) ForceSourceType() *string {
+	return nil
+}
+
 func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{

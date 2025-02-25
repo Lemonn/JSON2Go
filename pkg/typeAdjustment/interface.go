@@ -17,6 +17,7 @@ type TypeDeterminationFunction interface {
 	GetState() ([]*json.RawMessage, error)
 	GetExtraCode() []ast.Decl
 	TypeExpansion() bool
+	ForceSourceType() *string
 }
 
 type State int

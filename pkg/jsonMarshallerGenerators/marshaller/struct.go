@@ -1,26 +1,53 @@
 package marshaller
 
 import (
-	"errors"
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/token"
-	"reflect"
 	"unicode"
 )
 
-func (g *Generator) structGenerator(str *ast.StructType, path string, name string) ([]ast.Stmt, []string, error) {
-	var localStruct *ast.DeclStmt
-	var err error
+func (g *Generator) generateShadowStruct(path string) *ast.DeclStmt {
+	var localFields []*ast.Field
+	var Level int
+	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+		break
+	}
+	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
+		localFields = append(localFields, &ast.Field{
+			Names: []*ast.Ident{{Name: g.GetFieldName(fieldPath)}},
+			Type:  g.GetFieldType(fieldPath),
+			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.seenTypes[fieldPath].JsonFieldName)},
+		})
+	}
+
+	return &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: &ast.Ident{
+						Name: "localType",
+					},
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{
+							List: localFields,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
 	required := false
 
-	localStruct, err = structTypeFromFields(str.Fields.List, path, g.data)
-	if err != nil {
-		return nil, nil, err
-	}
+	localStruct := g.generateShadowStruct(path)
+
 	stmts = append(stmts, &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
@@ -41,27 +68,18 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	stmts = append(stmts, localStruct)
 	stmts = append(stmts, utils.GenerateTypeWhitInitializedArrays(localStruct.Decl.(*ast.GenDecl).Specs[0].(*ast.TypeSpec).Type.(*ast.StructType)))
 
-	for _, field := range str.Fields.List {
-
-		var fData *fieldData.FieldData
-		if v, ok := g.data[path+"."+field.Names[0].Name]; !ok {
-			return nil, nil, errors.New(fmt.Sprintf("struct field not found, path: %s", path+"."+field.Names[0].Name))
-		} else if v.JsonFieldName == nil {
-			continue
-		} else {
-			fData = v
-		}
-
-		if fData.ParseFunctions != nil && fData.BaseType != nil {
+	var Level int
+	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+		break
+	}
+	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
+		levelOfArrays := g.GetLevelOfArrays(fieldPath)
+		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].TypeAdjusterData.ActiveType != nil && !g.IsStruct(fieldPath) {
 			required = true
-			if levelOfArrays := utils.GetLevelOfArrays(field.Type); levelOfArrays > 0 {
-				fieldType, err := utils.WalkArrays(&field.Type)
-				if err != nil {
-					return nil, nil, err
-				}
-				g.handleArrayField(&stmts, levelOfArrays, field.Names[0].Name, fData, name, *fieldType)
+			if levelOfArrays > 0 {
+				g.handleArrayField(&stmts, fieldPath)
 			} else {
-				g.handleField(&stmts, name, field.Names[0].Name, fData)
+				g.handleField(&stmts, fieldPath)
 			}
 		} else {
 			stmts = append(stmts, &ast.AssignStmt{
@@ -71,7 +89,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 							Name: "lt",
 						},
 						Sel: &ast.Ident{
-							Name: field.Names[0].Name,
+							Name: g.GetFieldName(fieldPath),
 						},
 					},
 				},
@@ -79,16 +97,18 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 				Rhs: []ast.Expr{
 					&ast.SelectorExpr{
 						X: &ast.Ident{
-							Name: string(unicode.ToLower([]rune(name)[0])),
+							Name: string(unicode.ToLower([]rune(g.GetFieldName(path))[0])),
 						},
 						Sel: &ast.Ident{
-							Name: field.Names[0].Name,
+							Name: g.GetFieldName(fieldPath),
 						},
 					},
 				},
 			})
 		}
+
 	}
+
 	if len(stmts) == 0 || !required {
 		return []ast.Stmt{}, []string{}, nil
 	}
@@ -116,7 +136,7 @@ func (g *Generator) structGenerator(str *ast.StructType, path string, name strin
 	return stmts, []string{"encoding/json"}, nil
 }
 
-func (g *Generator) handleField(stmts *[]ast.Stmt, structName string, fieldName string, fData *fieldData.FieldData) {
+func (g *Generator) handleField(stmts *[]ast.Stmt, path string) {
 	*stmts = append(*stmts, &ast.AssignStmt{
 		Lhs: []ast.Expr{
 			&ast.SelectorExpr{
@@ -124,7 +144,7 @@ func (g *Generator) handleField(stmts *[]ast.Stmt, structName string, fieldName 
 					Name: "lt",
 				},
 				Sel: &ast.Ident{
-					Name: fieldName,
+					Name: g.GetFieldName(path),
 				},
 			},
 			&ast.Ident{
@@ -135,15 +155,15 @@ func (g *Generator) handleField(stmts *[]ast.Stmt, structName string, fieldName 
 		Rhs: []ast.Expr{
 			&ast.CallExpr{
 				Fun: &ast.Ident{
-					Name: fData.ParseFunctions.ToTypeParseFunction,
+					Name: "Marshall" + g.GetFieldName(path),
 				},
 				Args: []ast.Expr{
 					&ast.SelectorExpr{
 						X: &ast.Ident{
-							Name: string(unicode.ToLower([]rune(structName)[0])),
+							Name: string(unicode.ToLower([]rune(g.GetParentFieldName(path))[0])),
 						},
 						Sel: &ast.Ident{
-							Name: fieldName,
+							Name: g.GetFieldName(path),
 						},
 					},
 				},
@@ -177,21 +197,13 @@ func (g *Generator) handleField(stmts *[]ast.Stmt, structName string, fieldName 
 	})
 }
 
-func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, fieldName string, fData *fieldData.FieldData, structName string, fieldType ast.Expr) {
+func (g *Generator) handleArrayField(stmts *[]ast.Stmt, path string) {
 	var fieldNameExpr ast.Expr
 	var structFieldNameIndexExpr ast.Expr
+	levelOfArrays := g.GetLevelOfArrays(path)
 
-	if fieldName == "" {
-		fieldNameExpr = &ast.Ident{Name: "lt"}
-	} else {
-		fieldNameExpr = &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: fieldName}}
-	}
-
-	if fieldName == "" {
-		structFieldNameIndexExpr = fieldType
-	} else {
-		structFieldNameIndexExpr = &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(structName)[0]))}, Sel: &ast.Ident{Name: fieldName}}
-	}
+	fieldNameExpr = &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: g.GetFieldName(path)}}
+	structFieldNameIndexExpr = &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.GetFieldName(path)}}
 
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
@@ -204,9 +216,7 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, field
 								Name: "result",
 							},
 						},
-						Type: &ast.Ident{
-							Name: *fData.BaseType,
-						},
+						Type: g.GetBaseType(path),
 					},
 				},
 			},
@@ -224,7 +234,7 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, field
 			Rhs: []ast.Expr{
 				&ast.CallExpr{
 					Fun: &ast.Ident{
-						Name: fData.ParseFunctions.ToTypeParseFunction,
+						Name: "Marshall" + g.GetFieldName(path),
 					},
 					Args: []ast.Expr{
 						&ast.Ident{
@@ -261,75 +271,6 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, levelOfArrays int, field
 		},
 		utils.GenerateAppendStatement(levelOfArrays-1, 0, fieldNameExpr, &ast.Ident{Name: "result"}, "index"),
 	}
-	fmt.Println(*fData.BaseType)
-	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, utils.GetTypeFromBaseType(*fData.BaseType)))
+	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, g.GetBaseType(path)))
 	return
-}
-
-func structTypeFromFields(fields []*ast.Field, path string, tags map[string]*fieldData.FieldData) (*ast.DeclStmt, error) {
-	var localFields []*ast.Field
-	for _, field := range fields {
-
-		if v, ok := tags[path+"."+field.Names[0].Name]; ok && v.BaseType != nil {
-			var levelOfArrays int
-			currentType := field.Type
-			var finished bool
-			for !finished {
-				switch currentType.(type) {
-				case *ast.StarExpr:
-					if _, ok := currentType.(*ast.StarExpr).X.(*ast.Ident); !ok {
-						return nil, errors.New(fmt.Sprintf("only *ast.StarExpr expression whit an nestet"+
-							" *ast.Ident are supported, this one contains an: %s",
-							reflect.TypeOf(currentType.(*ast.StarExpr).X)))
-					}
-					currentType = currentType.(*ast.StarExpr).X
-					finished = true
-				case *ast.Ident:
-					finished = true
-				case *ast.ArrayType:
-					currentType = currentType.(*ast.ArrayType).Elt
-					levelOfArrays++
-				case *ast.SelectorExpr:
-					finished = true
-				case *ast.InterfaceType:
-					finished = true
-				default:
-					return nil, errors.New(fmt.Sprintf("only StarExpr, Ident, SelectorExpr, ArrayType or InterfaceType are"+
-						" supported, this expression is of type: %s. Current path: %s",
-						reflect.TypeOf(currentType), path+"."+field.Names[0].Name))
-				}
-			}
-
-			// TODO if we got an *ast.StarExpr we currently replace it with an *ast.Ident, keep it an *ast.StarExpr
-			localFields = append(localFields,
-				&ast.Field{
-					Doc:     field.Doc,
-					Names:   field.Names,
-					Type:    utils.GeneratedNestedArray(levelOfArrays, utils.GetTypeFromBaseType(*v.BaseType)),
-					Tag:     field.Tag,
-					Comment: field.Comment,
-				})
-
-		} else {
-			localFields = append(localFields, field)
-		}
-
-	}
-	return &ast.DeclStmt{
-		Decl: &ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: "localType",
-					},
-					Type: &ast.StructType{
-						Fields: &ast.FieldList{
-							List: localFields,
-						},
-					},
-				},
-			},
-		},
-	}, nil
 }

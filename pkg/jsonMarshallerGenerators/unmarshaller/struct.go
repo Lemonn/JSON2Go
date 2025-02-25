@@ -394,7 +394,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 													Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
 												},
 												Sel: &ast.Ident{
-													Name: g.getFieldName(path),
+													Name: g.getFieldName(fieldPath),
 												},
 											},
 										},
@@ -1663,7 +1663,6 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 			},
 		},
 	}
-	fieldType := g.getFieldType(path, 2)
 	return []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -1733,7 +1732,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 				},
 			},
 		},
-		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, fieldType),
+		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, g.getBaseType(path)),
 	}
 }
 

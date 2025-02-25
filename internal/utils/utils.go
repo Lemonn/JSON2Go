@@ -3,10 +3,12 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -333,4 +335,48 @@ func JsonNameToGoName(str string) string {
 	} else {
 		return strcase.ToCamel(str)
 	}
+}
+
+func GetFieldType(seenTypes map[string]*fieldData.PathData, path string) (expr ast.Expr, structType bool) {
+	levelOfArrays := math.MaxInt32
+	//TODO error on path not found
+	if len(seenTypes[path].Types) == 1 {
+		var Type fieldData.Type
+		for Type, _ = range seenTypes[path].Types {
+			break
+		}
+		if len(seenTypes[path].Types[Type]) == 1 {
+			for levelOfArrays, _ = range seenTypes[path].Types[Type] {
+				break
+			}
+			pathElements := strings.Split(path, ".")
+			if Type == fieldData.Field {
+				structType = true
+				expr = GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}, Sel: &ast.Ident{Name: pathElements[len(pathElements)-1]}}})
+			} else if Type == fieldData.EmptyArray {
+				expr = GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+			} else if Type == fieldData.EmptyStruct {
+				expr = GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+			} else {
+				expr = GeneratedNestedArray(levelOfArrays, &ast.Ident{Name: string(Type)})
+			}
+		} else {
+			for i, _ := range seenTypes[path].Types[Type] {
+				if levelOfArrays > i {
+					levelOfArrays = i
+				}
+			}
+			expr = GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+		}
+	} else {
+		for _, m := range seenTypes[path].Types {
+			for i, _ := range m {
+				if levelOfArrays > i {
+					levelOfArrays = i
+				}
+			}
+		}
+		expr = GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
+	}
+	return expr, structType
 }

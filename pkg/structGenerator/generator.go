@@ -12,9 +12,6 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment/buildin"
-	"slices"
-
-	//"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -39,26 +36,6 @@ type FileData struct {
 	file *ast.File
 	fSet *token.FileSet
 }
-
-/*
-func (f *FileData) getFileByPackage(packageName string) *FileData {
-	if v, ok := f[packageName]; ok {
-		return v
-	} else {
-		fSet := token.NewFileSet()
-		file, err := parser.ParseFile(fSet, "", "package test", parser.ParseComments)
-		if err != nil {
-			panic(err)
-		}
-		f[packageName] = &FileData{
-			file: file,
-			fSet: fSet,
-		}
-		return f[packageName]
-	}
-}
-
-*/
 
 func (f *FileData) handleImports(Package string) error {
 	var foundNodes []*AstUtils.FoundNodes
@@ -173,6 +150,23 @@ func NewCodeGenerator() *StructGenerator {
 	}
 }
 
+func (s *StructGenerator) IsStruct(path string) bool {
+	if len(s.seenTypes[path].Types) == 1 || s.emptySubtype(path) {
+		Type := s.getType(path)
+		if len(s.seenTypes[path].Types[Type]) == 1 {
+			if Type == fieldData.Field {
+				return true
+			} else {
+				return false
+			}
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
 func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, path string, structName string) error {
 	var JsonData interface{}
 	var err error
@@ -183,6 +177,36 @@ func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, p
 	err = s.codeGen(JsonData, structName, 0)
 	if err != nil {
 		return err
+	}
+
+	if s.IsStruct(structName) {
+		var levelOfArrays int
+		for levelOfArrays, _ = range s.seenTypes[structName].Types["field"] {
+			break
+		}
+		if levelOfArrays > 0 {
+			s.seenTypes[structName+".AnonymousArray"] = s.seenTypes[structName]
+
+			s.seenTypes[structName] = &fieldData.PathData{
+				Types:                   map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
+				JsonFieldName:           "",
+				Package:                 nil,
+				Omitempty:               false,
+				TypeAdjusterData:        nil,
+				Error:                   nil,
+				RequiredField:           false,
+				ForceSourceType:         nil,
+				DirectToForceSourceType: false,
+			}
+			s.seenTypes[structName].Types[fieldData.Field] = map[int]map[string]*fieldData.ValueDetails{}
+			s.seenTypes[structName].Types[fieldData.Field][levelOfArrays] = make(map[string]*fieldData.ValueDetails)
+			s.seenTypes[structName].Types[fieldData.Field][levelOfArrays][structName+".AnonymousArray"] = &fieldData.ValueDetails{
+				Count:              0,
+				FirstSeenTimestamp: 0,
+				LastSeenTimestamp:  0,
+			}
+		}
+
 	}
 
 	err = s.testNew(path)
@@ -201,6 +225,70 @@ func (s *StructGenerator) GenerateIntoDir(jsonData []byte, packageName string, p
 	return nil
 }
 
+func (s *StructGenerator) getType(path string) fieldData.Type {
+	for Type, _ := range s.seenTypes[path].Types {
+		if len(s.seenTypes[path].Types) == 1 {
+			return Type
+		} else if Type != fieldData.EmptyArray && Type != fieldData.EmptyStruct {
+			return Type
+		}
+	}
+	return fieldData.Unsupported
+}
+
+func (s *StructGenerator) emptySubtype(path string) bool {
+	var EmptySubtype bool
+	var Level int
+	if len(s.seenTypes[path].Types) == 2 {
+		if _, ok := s.seenTypes[path].Types[fieldData.Field]; ok {
+			if v, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+				for Level, _ = range s.seenTypes[path].Types[fieldData.Field] {
+					break
+				}
+				if _, ok := v[Level]; ok && len(v) == 1 {
+					EmptySubtype = true
+				}
+
+			} else if _, ok := s.seenTypes[path].Types[fieldData.EmptyStruct]; ok {
+				for Level, _ = range s.seenTypes[path].Types[fieldData.EmptyStruct] {
+					break
+				}
+				if _, ok := v[Level]; ok && len(v) == 1 {
+					EmptySubtype = true
+				}
+			}
+		} else if _, ok := s.seenTypes[path].Types[fieldData.String]; ok {
+			if v, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+				for Level, _ = range s.seenTypes[path].Types[fieldData.String] {
+					break
+				}
+				if _, ok := v[Level]; ok && len(v) == 1 {
+					EmptySubtype = true
+				}
+			}
+		} else if _, ok := s.seenTypes[path].Types[fieldData.Float64]; ok {
+			if v, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+				for Level, _ = range s.seenTypes[path].Types[fieldData.Float64] {
+					break
+				}
+				if _, ok := v[Level]; ok && len(v) == 1 {
+					EmptySubtype = true
+				}
+			}
+		} else if _, ok := s.seenTypes[path].Types[fieldData.Bool]; ok {
+			if v, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+				for Level, _ = range s.seenTypes[path].Types[fieldData.Bool] {
+					break
+				}
+				if _, ok := v[Level]; ok && len(v) == 1 {
+					EmptySubtype = true
+				}
+			}
+		}
+	}
+	return EmptySubtype
+}
+
 func (s *StructGenerator) getStartPath() (string, error) {
 	for path, _ := range s.seenTypes {
 		pathElements := strings.Split(path, ".")
@@ -211,30 +299,25 @@ func (s *StructGenerator) getStartPath() (string, error) {
 	return "", errors.New("start path not found")
 }
 
-func (s *StructGenerator) getFieldType(path string) (expr ast.Expr, structType bool) {
+func (s *StructGenerator) getFieldType(path string) (expr ast.Expr) {
 	levelOfArrays := math.MaxInt32
 	//TODO error on path not found
-
 	if s.seenTypes[path].ForceSourceType != nil {
 		parseExpr, err := parser.ParseExpr(*s.seenTypes[path].ForceSourceType)
 		if err != nil {
-			return nil, false
+			return nil
 		}
-		return parseExpr, false
+		return parseExpr
 	}
 
-	if len(s.seenTypes[path].Types) == 1 {
-		var Type fieldData.Type
-		for Type, _ = range s.seenTypes[path].Types {
-			break
-		}
+	if len(s.seenTypes[path].Types) == 1 || s.emptySubtype(path) {
+		Type := s.getType(path)
 		if len(s.seenTypes[path].Types[Type]) == 1 {
 			for levelOfArrays, _ = range s.seenTypes[path].Types[Type] {
 				break
 			}
 			pathElements := strings.Split(path, ".")
 			if Type == fieldData.Field {
-				structType = true
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}, Sel: &ast.Ident{Name: pathElements[len(pathElements)-1]}}})
 			} else if Type == fieldData.EmptyArray {
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
@@ -261,77 +344,9 @@ func (s *StructGenerator) getFieldType(path string) (expr ast.Expr, structType b
 		}
 		expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 	}
-	return expr, structType
+
+	return expr
 }
-
-func reversePath(path string, reversePath map[string]int) {
-	pathElements := strings.Split(path, ".")
-	for i, _ := range pathElements {
-		var p string
-		for j := range i + 1 {
-			if p == "" {
-				p = pathElements[len(pathElements)-j-1]
-			} else {
-				p = p + "." + pathElements[len(pathElements)-j-1]
-			}
-		}
-		if _, ok := reversePath[p]; ok {
-			reversePath[p]++
-		} else {
-			reversePath[p] = 1
-		}
-	}
-}
-
-func (s *StructGenerator) markNamingConflicts() {
-	rPath := make(map[string]int)
-
-	for path, data := range s.seenTypes {
-		if _, ok := data.Types[fieldData.Field]; ok {
-			reversePath(path, rPath)
-		}
-	}
-
-	for path, data := range s.seenTypes {
-		if _, ok := data.Types[fieldData.Field]; ok {
-			pathElements := strings.Split(path, ".")
-			p := pathElements[len(pathElements)-1]
-			for i := 1; i < len(pathElements); i++ {
-				if rPath[p] == 1 && i == 1 {
-					break
-				}
-				if rPath[p] == 1 {
-					f := strings.Split(p, ".")
-					slices.Reverse(f)
-					var k string
-					for _, s2 := range f {
-						if k == "" {
-							k = s2
-						} else {
-							k = k + "." + s2
-						}
-					}
-					s.seenTypes[path].Package = &k
-					break
-				}
-				p += "." + pathElements[len(pathElements)-i-1]
-			}
-		}
-	}
-}
-
-/*
-func (s *StructGenerator) setOmitempty() {
-	for s2, data := range s.seenTypes {
-		for t, m := range data.Types {
-			for i, m2 := range m {
-
-			}
-		}
-	}
-}
-
-*/
 
 func (s *StructGenerator) testNew(filePath string) error {
 	//s.markNamingConflicts()
@@ -345,26 +360,6 @@ func (s *StructGenerator) testNew(filePath string) error {
 	for {
 		for _, path := range pathsToProcess {
 			var file *ast.File
-			/*
-				if s.seenTypes[path].Package != nil {
-					if _, ok := s.files[*s.seenTypes[path].Package]; ok {
-						file = s.files[*s.seenTypes[path].Package].file
-					} else {
-						fset := token.NewFileSet()
-						file, err = parser.ParseFile(fset, "", "package "+strings.ReplaceAll(*s.seenTypes[path].Package, ".", ""), parser.ParseComments)
-						if err != nil {
-							return err
-						}
-						s.files[*s.seenTypes[path].Package] = &FileData{
-							file: file,
-							fSet: fset,
-						}
-					}
-				} else {
-					file = defaultFile
-				}
-
-			*/
 			if _, ok := s.files[path]; !ok {
 				fset := token.NewFileSet()
 				pathElements := strings.Split(path, ".")
@@ -380,8 +375,7 @@ func (s *StructGenerator) testNew(filePath string) error {
 			}
 
 			file = s.files[path].file
-			expr, structType := s.getFieldType(path)
-			if structType {
+			if s.IsStruct(path) {
 				var fields []*ast.Field
 				var levelOfArrays int
 				for levelOfArrays, _ = range s.seenTypes[path].Types["field"] {
@@ -395,9 +389,8 @@ func (s *StructGenerator) testNew(filePath string) error {
 					if err != nil {
 						return err
 					}
-
-					expr, structType = s.getFieldType(fieldPath)
-					if structType {
+					expr := s.getFieldType(fieldPath)
+					if s.IsStruct(fieldPath) {
 						pathsToProcess = append(pathsToProcess, fieldPath)
 						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
 					}
@@ -406,7 +399,8 @@ func (s *StructGenerator) testNew(filePath string) error {
 					fields = append(fields, &ast.Field{
 						Names: []*ast.Ident{{Name: pathElements[len(pathElements)-1]}},
 						Type:  expr,
-						Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", s.seenTypes[fieldPath].JsonFieldName)},
+						//TODO set path correctly. Do not set a path if JsonFieldName == "". Write a function, that checks if omitempty should be set
+						Tag: &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", s.seenTypes[fieldPath].JsonFieldName)},
 					})
 				}
 				pathElements := strings.Split(path, ".")
@@ -417,9 +411,11 @@ func (s *StructGenerator) testNew(filePath string) error {
 							Name: &ast.Ident{
 								Name: pathElements[len(pathElements)-1],
 							},
-							Type: &ast.StructType{
-								Fields: &ast.FieldList{List: fields},
-							},
+							Type: func() ast.Expr {
+								return &ast.StructType{
+									Fields: &ast.FieldList{List: fields},
+								}
+							}(),
 						},
 					},
 				})
@@ -431,7 +427,7 @@ func (s *StructGenerator) testNew(filePath string) error {
 							Name: &ast.Ident{
 								Name: path,
 							},
-							Type: expr,
+							Type: s.getFieldType(path),
 						},
 					},
 				})
@@ -493,77 +489,6 @@ func (s *StructGenerator) testNew(filePath string) error {
 	}
 	return nil
 }
-
-/*
-func (s *StructGenerator) packType(fields []*ast.Field, structName string) error {
-	expr, levelOfArrays, err := utils.WalkExpressionsWhitArrayCount(&fields[0].Type)
-	if err != nil {
-		return err
-	}
-	if reflect.TypeOf(*expr) == reflect.TypeOf(&ast.StructType{}) && levelOfArrays > 0 {
-		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: structName + "AnonymousArray",
-					},
-					Type: &ast.StructType{
-						Fields: &ast.FieldList{
-							List: (*expr).(*ast.StructType).Fields.List,
-						},
-					},
-				},
-			},
-		})
-
-		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: ast.NewIdent(structName),
-					Type: utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{
-						X: &ast.Ident{
-							Name: structName + "AnonymousArray",
-						},
-					}),
-				},
-			},
-		})
-
-		for path, tag := range s.data {
-			t := strings.Split(path, ".")
-			var r string
-			for _, s2 := range t {
-				if r != "" {
-					r += "."
-				}
-				if s2 == structName {
-					r += structName + "AnonymousArray"
-				} else {
-					r += s2
-				}
-			}
-			s.data[r] = tag
-			if r != path {
-				delete(s.data, path)
-			}
-
-		}
-	} else {
-		s.file.Decls = append(s.file.Decls, &ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: ast.NewIdent(structName),
-					Type: utils.GeneratedNestedArray(levelOfArrays, *expr),
-				},
-			},
-		})
-	}
-	return nil
-}
-*/
 
 func (s *StructGenerator) codeGen(jsonData interface{}, path string, depth int) error {
 	switch result := jsonData.(type) {
@@ -659,13 +584,9 @@ func (s *StructGenerator) processSlice(sliceData []interface{}, path string, dep
 			}
 		}
 	}
-
 	if len(sliceData) == 0 {
 		s.setTypeAtLevel(path, fieldData.EmptyArray, depth, "[]")
 	}
-
-	//TODO we need to handle empty [] array
-
 	return nil
 }
 

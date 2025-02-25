@@ -20,8 +20,14 @@ type TypeAdjuster struct {
 	startTime              time.Time
 }
 
-func NewTypeAdjuster(seenTypes map[string]*fieldData.PathData) *TypeAdjuster {
-	return &TypeAdjuster{seenTypes: seenTypes}
+func NewTypeAdjuster(seenTypes map[string]*fieldData.PathData, checkers []TypeDeterminationFunction, startTime time.Time) *TypeAdjuster {
+	return &TypeAdjuster{
+		seenTypes:              seenTypes,
+		registeredTypeCheckers: checkers,
+		skipPreviouslyFailed:   false,
+		checkOnly:              false,
+		startTime:              startTime,
+	}
 }
 
 func (ta *TypeAdjuster) searchTypeDeterminationFunctionByName(name string) (TypeDeterminationFunction, error) {
@@ -199,8 +205,8 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			if err != nil {
 				return err
 			}
-			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = checkerState
-			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
+			(*ta.seenTypes[path].TypeAdjusterData).TypeAdjusterData = checkerState
+			(*ta.seenTypes[path].TypeAdjusterData).LastCheckedTimestamp = ta.startTime.Unix()
 			runCheckersOnly = true
 		} else {
 			//TODO set error for type change
@@ -226,6 +232,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			if err != nil {
 				return err
 			}
+
 			if ta.seenTypes[path].TypeAdjusterData == nil {
 				ta.seenTypes[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
 			}
@@ -234,6 +241,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			ta.seenTypes[path].TypeAdjusterData.ActiveType = &typeString
 			ta.seenTypes[path].TypeAdjusterData.SetTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
+			ta.seenTypes[path].ForceSourceType = checker.ForceSourceType()
 
 			err = ta.setFunctions(path, checker)
 			if err != nil {
@@ -242,12 +250,12 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 
 		} else if state == StateFailed {
 			if ta.seenTypes[path].TypeAdjusterData == nil {
-				ta.seenTypes[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
+				(*ta.seenTypes[path]).TypeAdjusterData = &fieldData.TypeAdjusterData{}
 			}
 			if ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes == nil {
-				ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes = map[string]int64{}
+				(*(*ta.seenTypes[path]).TypeAdjusterData).CheckedNonMatchingTypes = map[string]int64{}
 			}
-			ta.seenTypes[path].TypeAdjusterData.CheckedNonMatchingTypes[checker.GetName()] = ta.startTime.Unix()
+			(*(*ta.seenTypes[path]).TypeAdjusterData).CheckedNonMatchingTypes[checker.GetName()] = ta.startTime.Unix()
 		}
 
 		if state == StateApplicable || state == StateUndecided {
