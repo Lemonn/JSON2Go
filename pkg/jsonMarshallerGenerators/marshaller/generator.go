@@ -19,6 +19,11 @@ func NewGenerator(seenTypes map[string]*fieldData.PathData) *Generator {
 	}
 }
 
+func (g *Generator) GetGlobalFunctions() []ast.Decl {
+	var decls []ast.Decl
+	return decls
+}
+
 func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 	var err error
 	var decls []ast.Decl

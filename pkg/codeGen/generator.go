@@ -35,11 +35,14 @@ type Generator struct {
 	outputPath        string
 	seenTypesUtils    *utils.SeenTypeUtils
 	startTime         time.Time
+	globalFile        *ast.File
+	globalImportPath  string
 }
 
 func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeDeterminationFunction) (*Generator, error) {
-	if moduleName == nil && basePath == nil {
-		return nil, errors.New("either packageName or basePath must be specified")
+	internalBasePath, err := pathBuilder(moduleName, basePath)
+	if err != nil {
+		return nil, err
 	}
 	/*
 		var seenTypes map[string]*fieldData.PathData
@@ -59,7 +62,19 @@ func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath strin
 		outputPath:        outputPath,
 		seenTypesUtils:    utils.NewSeenTypeUtils(inputFile),
 		startTime:         time.Now(),
+		globalFile:        nil,
+		globalImportPath:  internalBasePath + "/Globals",
 	}, nil
+}
+
+func pathBuilder(moduleName *string, basePath *string) (string, error) {
+	if moduleName != nil {
+		return *moduleName, nil
+	} else if basePath != nil {
+		return *basePath, nil
+	} else {
+		return "", errors.New("either packageName or basePath must be specified")
+	}
 }
 
 func (s *Generator) Generate() error {
@@ -171,26 +186,55 @@ func (s *Generator) Generate() error {
 }
 
 func (s *Generator) addJSONMarshaller() error {
+	var marshallGlobals, unMarshallGlobals bool
+	var err error
 	for path, file := range s.stackedMarshaller {
-		uGen := unmarshaller.NewGenerator(s.seenTypes)
-		generate, _, err := uGen.Generate(path)
+		uGen := unmarshaller.NewGenerator(s.seenTypes, s.globalImportPath)
+		uDecls, imports, err := uGen.Generate(path)
 		if err != nil {
 			return err
 		}
-		file.Decls = append(file.Decls, generate...)
+		if len(uDecls) > 0 {
+			unMarshallGlobals = true
+			file.Decls = append(file.Decls, uDecls...)
+			AstUtils.AddMissingImports(file, imports)
+		}
 
 		mGen := marshaller.NewGenerator(s.seenTypes)
-		gen, _, err := mGen.Generate(path)
+		mDecl, imports, err := mGen.Generate(path)
 		if err != nil {
 			return err
 		}
-		file.Decls = append(file.Decls, gen...)
-
+		if len(mDecl) > 0 {
+			marshallGlobals = true
+			file.Decls = append(file.Decls, mDecl...)
+			AstUtils.AddMissingImports(file, imports)
+		}
 		err = s.addTypeConverterFunctions(path, file)
 		if err != nil {
 			return err
 		}
 	}
+
+	if s.globalFile == nil {
+		s.globalFile, err = AstUtils.GetEmptyFile("Globals")
+		if err != nil {
+			return err
+		}
+	}
+
+	if unMarshallGlobals {
+		uGen := unmarshaller.NewGenerator(s.seenTypes, s.globalImportPath)
+		uGGen, uGImports := uGen.GetGlobalFunctions()
+		AstUtils.AddMissingImports(s.globalFile, uGImports)
+		s.globalFile.Decls = append(s.globalFile.Decls, uGGen...)
+	}
+
+	if marshallGlobals {
+		mGen := marshaller.NewGenerator(s.seenTypes)
+		s.globalFile.Decls = append(s.globalFile.Decls, mGen.GetGlobalFunctions()...)
+	}
+
 	return nil
 }
 
@@ -248,6 +292,25 @@ func (s *Generator) writeFiles() error {
 		}
 		pathElements := strings.Split(path, ".")
 		err = os.WriteFile(strings.ReplaceAll(s.outputPath+"/"+path, ".", "/")+"/"+pathElements[len(pathElements)-1]+".go", c, 0666)
+		if err != nil {
+			return err
+		}
+	}
+
+	if s.globalFile != nil {
+		output := bytes.NewBuffer([]byte{})
+		if err := printer.Fprint(output, token.NewFileSet(), s.globalFile); err != nil {
+			return err
+		}
+		c, err := format.Source(output.Bytes())
+		if err != nil {
+			return err
+		}
+		err = os.MkdirAll(s.outputPath+"/Globals", os.ModePerm)
+		if err != nil {
+			return err
+		}
+		err = os.WriteFile(s.outputPath+"/Globals/globals.go", c, 0666)
 		if err != nil {
 			return err
 		}

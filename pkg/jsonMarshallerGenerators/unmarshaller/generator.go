@@ -12,13 +12,23 @@ type Generator struct {
 	added          bool
 	structPrefixes map[string]string
 	*utils.SeenTypeUtils
+	globalsImportPath string
 }
 
-func NewGenerator(seenTypes map[string]*fieldData.PathData) *Generator {
+func NewGenerator(seenTypes map[string]*fieldData.PathData, globalImportsPath string) *Generator {
 	return &Generator{
-		seenTypes:     seenTypes,
-		SeenTypeUtils: utils.NewSeenTypeUtils(seenTypes),
+		seenTypes:         seenTypes,
+		SeenTypeUtils:     utils.NewSeenTypeUtils(seenTypes),
+		globalsImportPath: globalImportsPath,
 	}
+}
+
+func (g *Generator) GetGlobalFunctions() ([]ast.Decl, []string) {
+	var decls []ast.Decl
+	decls = append(decls, g.addAdditionalElementsError()...)
+	decls = append(decls, g.addCheckForFirstErrorNotOfTypeTFunction())
+	decls = append(decls, g.addGetAllErrorsOfTypeFunction())
+	return decls, g.getGlobalImports()
 }
 
 type FieldDetails struct {

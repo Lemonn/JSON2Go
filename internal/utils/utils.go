@@ -187,6 +187,10 @@ func GenerateAssignStmt(levelOfArraysLeft, levelOfArraysRight int, leftSide, rig
 
 }
 
+func StringToPointer(str string) *string {
+	return &str
+}
+
 func GenerateAppendStatement(levelOfArraysLeft, levelOfArraysRight int, leftSide, rightSide ast.Expr, indexName string) *ast.AssignStmt {
 	return &ast.AssignStmt{
 		Lhs: []ast.Expr{
@@ -389,4 +393,9 @@ func GetFieldName(path string) string {
 func GetParentFieldName(path string) string {
 	pathElements := strings.Split(path, ".")
 	return pathElements[len(pathElements)-2]
+}
+
+func GetPackageNameFromImportPath(importPath string) string {
+	pathElements := strings.Split(importPath, "/")
+	return pathElements[len(pathElements)-1]
 }
