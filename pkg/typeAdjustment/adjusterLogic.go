@@ -3,6 +3,7 @@ package typeAdjustment
 import (
 	"bytes"
 	"errors"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	errors2 "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
 	"go/ast"
@@ -18,6 +19,7 @@ type TypeAdjuster struct {
 	skipPreviouslyFailed   bool
 	checkOnly              bool
 	startTime              time.Time
+	*utils.SeenTypeUtils
 }
 
 func NewTypeAdjuster(seenTypes map[string]*fieldData.PathData, checkers []TypeDeterminationFunction, startTime time.Time) *TypeAdjuster {
@@ -27,6 +29,7 @@ func NewTypeAdjuster(seenTypes map[string]*fieldData.PathData, checkers []TypeDe
 		skipPreviouslyFailed:   false,
 		checkOnly:              false,
 		startTime:              startTime,
+		SeenTypeUtils:          utils.NewSeenTypeUtils(seenTypes),
 	}
 }
 
@@ -54,7 +57,7 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDetermina
 								Name: "baseValue",
 							},
 						},
-						Type: ta.getOriginalType(path),
+						Type: ta.GetFieldType(path, true),
 					},
 				},
 			},
@@ -78,10 +81,9 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDetermina
 }
 
 func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminationFunction) *ast.FuncDecl {
-	pathElements := strings.Split(path, ".")
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
-			Name: "Marshall" + pathElements[len(pathElements)-1],
+			Name: "Marshall" + utils.GetFieldName(path),
 		},
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
@@ -99,7 +101,7 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminati
 			Results: &ast.FieldList{
 				List: []*ast.Field{
 					{
-						Type: ta.getOriginalType(path),
+						Type: ta.GetFieldType(path, true),
 					},
 					{
 						Type: &ast.Ident{
@@ -115,6 +117,7 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminati
 	}
 }
 
+/*
 func (ta *TypeAdjuster) getOriginalType(path string) ast.Expr {
 	var Type fieldData.Type
 	if len(ta.seenTypes[path].Types) >= 0 {
@@ -139,6 +142,8 @@ func (ta *TypeAdjuster) getOriginalType(path string) ast.Expr {
 	}
 }
 
+*/
+
 func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunction) error {
 	unmarshallFunction, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
 	if err != nil {
@@ -150,7 +155,7 @@ func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunct
 		return err
 	}
 
-	marshallFunction, err := checker.GenerateUnmarshall(ta.getMarshallScaffold(path, checker))
+	marshallFunction, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, checker))
 	if err != nil {
 		return err
 	}
@@ -285,4 +290,16 @@ func (ta *TypeAdjuster) checkerExcluded(path string, checker TypeDeterminationFu
 		}
 	}
 	return false
+}
+
+// TODO
+func (ta *TypeAdjuster) errorHandler(path string, err error) error {
+
+	return nil
+}
+
+// TODO
+func (ta *TypeAdjuster) appendErrorToPath(path string, err error) error {
+
+	return nil
 }

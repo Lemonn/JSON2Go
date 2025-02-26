@@ -17,7 +17,7 @@ type Parser struct {
 	seenTypeUtils *utils.SeenTypeUtils
 }
 
-func GenerateIntoDir(jsonData []byte, structName string, externalizeAnonymousArray bool) (map[string]*fieldData.PathData, error) {
+func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (map[string]*fieldData.PathData, error) {
 	seenTypes := make(map[string]*fieldData.PathData)
 	p := Parser{
 		seenTypes:     seenTypes,

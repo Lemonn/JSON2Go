@@ -8,7 +8,7 @@ import (
 
 func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
-	levelOfArrays := g.GetLevelOfArrays(path)
+	levelOfArrays := g.seenTypesUtils.GetLevelOfArrays(path)
 
 	stmts = append(stmts, &ast.DeclStmt{
 		Decl: &ast.GenDecl{
@@ -37,7 +37,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 							Name: "lt",
 						},
 					},
-					Type: utils.GeneratedNestedArray(levelOfArrays, g.GetBaseType(path)),
+					Type: utils.GeneratedNestedArray(levelOfArrays, g.seenTypesUtils.GetFieldType(path, false)),
 				},
 			},
 		},

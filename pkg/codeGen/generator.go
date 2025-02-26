@@ -2,7 +2,6 @@ package codeGen
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Lemonn/AstUtils"
@@ -11,7 +10,6 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
-	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment/buildin"
 	"go/ast"
 	"go/format"
 	"go/parser"
@@ -33,31 +31,33 @@ type Generator struct {
 	stackedMarshaller map[string]*ast.File
 	basePath          *string
 	moduleName        *string
-	typeAdjusters     []typeAdjustment.TypeAdjuster
+	typeAdjusters     []typeAdjustment.TypeDeterminationFunction
 	outputPath        string
 	seenTypesUtils    *utils.SeenTypeUtils
 	startTime         time.Time
 }
 
-func NewCodeGenerator(inputFile []byte, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeAdjuster) (*Generator, error) {
+func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeDeterminationFunction) (*Generator, error) {
 	if moduleName == nil && basePath == nil {
 		return nil, errors.New("either packageName or basePath must be specified")
 	}
+	/*
+		var seenTypes map[string]*fieldData.PathData
+		err := json.Unmarshal(inputFile, &seenTypes)
+		if err != nil {
+			return nil, err
+		}
 
-	var seenTypes map[string]*fieldData.PathData
-	err := json.Unmarshal(inputFile, &seenTypes)
-	if err != nil {
-		return nil, err
-	}
+	*/
 	return &Generator{
-		seenTypes:         seenTypes,
+		seenTypes:         inputFile,
 		files:             make(map[string]*FileData),
 		stackedMarshaller: map[string]*ast.File{},
 		basePath:          basePath,
 		moduleName:        moduleName,
 		typeAdjusters:     adjuster,
 		outputPath:        outputPath,
-		seenTypesUtils:    utils.NewSeenTypeUtils(seenTypes),
+		seenTypesUtils:    utils.NewSeenTypeUtils(inputFile),
 		startTime:         time.Now(),
 	}, nil
 }
@@ -99,13 +99,16 @@ func (s *Generator) Generate() error {
 				}
 				for fieldPath, _ := range s.seenTypes[path].Types["field"][levelOfArrays] {
 					//Adjust Types
-					ta := typeAdjustment.NewTypeAdjuster(s.seenTypes, []typeAdjustment.TypeDeterminationFunction{&buildin.UUIDTypeChecker{}}, s.startTime)
+					ta := typeAdjustment.NewTypeAdjuster(s.seenTypes, s.typeAdjusters, s.startTime)
 					err := ta.AdjustTypesNew(fieldPath)
 					if err != nil {
 						return err
 					}
 
-					expr := s.seenTypesUtils.GetFieldType(fieldPath)
+					expr, err := s.seenTypesUtils.GetAdjustedFieldType(fieldPath)
+					if err != nil {
+						return err
+					}
 					if s.seenTypesUtils.IsStruct(fieldPath) {
 						pathsToProcess = append(pathsToProcess, fieldPath)
 						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
@@ -143,7 +146,7 @@ func (s *Generator) Generate() error {
 							Name: &ast.Ident{
 								Name: path,
 							},
-							Type: s.seenTypesUtils.GetFieldType(path),
+							Type: s.seenTypesUtils.GetFieldType(path, false),
 						},
 					},
 				})
@@ -196,19 +199,29 @@ func (s *Generator) generateGoMod() {
 }
 
 func (s *Generator) addTypeConverterFunctions(path string, file *ast.File) error {
-	if s.seenTypes[path].TypeAdjusterData != nil && s.seenTypes[path].TypeAdjusterData.ParseFunctions != nil {
-		MarshallExprFile, err := parser.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[path].TypeAdjusterData.ParseFunctions.Marshall, parser.AllErrors)
-		if err != nil {
-			return err
-		}
-		file.Decls = append(file.Decls, MarshallExprFile.Decls[0])
+	fmt.Println(path)
 
-		UnMarshallExprFile, err := parser.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[path].TypeAdjusterData.ParseFunctions.Unmarshall, parser.AllErrors)
-		if err != nil {
-			return err
-		}
-		file.Decls = append(file.Decls, UnMarshallExprFile.Decls[0])
+	var elements map[string]*fieldData.ValueDetails
+	for level, _ := range s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)] {
+		elements = s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)][level]
 	}
+
+	for elementPath, _ := range elements {
+		if s.seenTypes[elementPath].TypeAdjusterData != nil && s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions != nil {
+			MarshallExprFile, err := parser.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.Marshall, parser.AllErrors)
+			if err != nil {
+				return err
+			}
+			file.Decls = append(file.Decls, MarshallExprFile.Decls[0])
+
+			UnMarshallExprFile, err := parser.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.Unmarshall, parser.AllErrors)
+			if err != nil {
+				return err
+			}
+			file.Decls = append(file.Decls, UnMarshallExprFile.Decls[0])
+		}
+	}
+
 	return nil
 }
 

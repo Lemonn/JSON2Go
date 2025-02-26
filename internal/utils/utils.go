@@ -380,3 +380,13 @@ func GetFieldType(seenTypes map[string]*fieldData.PathData, path string) (expr a
 	}
 	return expr, structType
 }
+
+func GetFieldName(path string) string {
+	pathElements := strings.Split(path, ".")
+	return pathElements[len(pathElements)-1]
+}
+
+func GetParentFieldName(path string) string {
+	pathElements := strings.Split(path, ".")
+	return pathElements[len(pathElements)-2]
+}

@@ -1,13 +1,20 @@
+//go:build test
+// +build test
+
 package structGenerator
+
+import (
+	"errors"
+	"fmt"
+	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"strconv"
+)
 
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/Lemonn/AstUtils"
-	"github.com/Lemonn/JSON2Go/internal/utils"
-	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
@@ -19,7 +26,6 @@ import (
 	"go/token"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -56,89 +62,6 @@ func (f *FileData) handleImports(Package string) error {
 	}, &completed)
 
 	return nil
-}
-
-var _ = &ast.File{
-	Package: 1,
-	Name: &ast.Ident{
-		Name: "main",
-	},
-	Decls: []ast.Decl{
-		&ast.GenDecl{
-			Tok: token.TYPE,
-			Specs: []ast.Spec{
-				&ast.TypeSpec{
-					Name: &ast.Ident{
-						Name: "B",
-					},
-					Type: &ast.StructType{
-						Fields: &ast.FieldList{
-							List: []*ast.Field{
-								&ast.Field{
-									Names: []*ast.Ident{
-										&ast.Ident{
-											Name: "Inner",
-										},
-									},
-									Type: &ast.StarExpr{
-										X: &ast.SelectorExpr{
-											X: &ast.Ident{
-												Name: "BInner",
-											},
-											Sel: &ast.Ident{
-												Name: "Inner",
-											},
-										},
-									},
-									Tag: &ast.BasicLit{
-										Kind:  token.STRING,
-										Value: "`json:\"Inner,omitempty\"`",
-									},
-								},
-								&ast.Field{
-									Names: []*ast.Ident{
-										&ast.Ident{
-											Name: "H",
-										},
-									},
-									Type: &ast.StarExpr{
-										X: &ast.Ident{
-											Name: "H",
-										},
-									},
-									Tag: &ast.BasicLit{
-										Kind:  token.STRING,
-										Value: "`json:\"H,omitempty\"`",
-									},
-								},
-								&ast.Field{
-									Names: []*ast.Ident{
-										&ast.Ident{
-											Name: "Duplicate",
-										},
-									},
-									Type: &ast.StarExpr{
-										X: &ast.SelectorExpr{
-											X: &ast.Ident{
-												Name: "BDuplicate",
-											},
-											Sel: &ast.Ident{
-												Name: "Duplicate",
-											},
-										},
-									},
-									Tag: &ast.BasicLit{
-										Kind:  token.STRING,
-										Value: "`json:\"Duplicate,omitempty\"`",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	},
 }
 
 func NewCodeGenerator() *StructGenerator {

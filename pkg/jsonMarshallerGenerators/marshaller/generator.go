@@ -1,21 +1,21 @@
 package marshaller
 
 import (
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators"
 	"go/ast"
 	"unicode"
 )
 
 type Generator struct {
-	seenTypes map[string]*fieldData.PathData
-	*jsonMarshallerGenerators.WrappingJSONMarshaller
+	seenTypes      map[string]*fieldData.PathData
+	seenTypesUtils *utils.SeenTypeUtils
 }
 
 func NewGenerator(seenTypes map[string]*fieldData.PathData) *Generator {
 	return &Generator{
-		seenTypes:              seenTypes,
-		WrappingJSONMarshaller: jsonMarshallerGenerators.NewWrappingJSONMarshaller(seenTypes),
+		seenTypes:      seenTypes,
+		seenTypesUtils: utils.NewSeenTypeUtils(seenTypes),
 	}
 }
 
@@ -29,7 +29,7 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 		if !g.seenTypes[path].DirectToForceSourceType {
 			//TODO struct that is replaces as a whole. This case is not yet implemented
 		}
-	} else if g.IsStruct(path) {
+	} else if g.seenTypesUtils.IsStruct(path) {
 		stmts, imports, err = g.structGenerator(path)
 		if err != nil {
 			return nil, nil, err
@@ -47,12 +47,12 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 					{
 						Names: []*ast.Ident{
 							{
-								Name: string(unicode.ToLower([]rune(g.GetFieldName(path))[0])),
+								Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0])),
 							},
 						},
 						Type: &ast.StarExpr{
 							X: &ast.Ident{
-								Name: g.GetFieldName(path),
+								Name: utils.GetFieldName(path),
 							},
 						},
 					},
