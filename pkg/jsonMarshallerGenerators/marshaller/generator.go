@@ -47,7 +47,7 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 					{
 						Names: []*ast.Ident{
 							{
-								Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0])),
+								Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0])),
 							},
 						},
 						Type: &ast.StarExpr{

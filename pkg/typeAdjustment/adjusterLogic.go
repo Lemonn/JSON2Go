@@ -2,6 +2,7 @@ package typeAdjustment
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
@@ -192,7 +193,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 		if err != nil {
 			return errors2.ActiveAdjusterNotFoundError{}
 		}
-		state, err := checker.CouldTypeBeApplied(ta.seenTypes[path].Types)
+		state, err := checker.CouldTypeBeApplied(path)
 		if err != nil {
 			//TODO check for complex type change error
 			//TODO we could potentially avoid this for the time type, if we start to support both types.
@@ -223,7 +224,17 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			continue
 		}
 
-		state, err := checker.CouldTypeBeApplied(ta.seenTypes[path].Types)
+		var TypeAdjusterData []json.RawMessage
+		if ta.seenTypes[path].TypeAdjusterData != nil {
+			TypeAdjusterData = ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData
+		}
+
+		err := checker.SetState(TypeAdjusterData, path, ta.registeredTypeCheckers, ta.seenTypes)
+		if err != nil {
+			//TODO handle incompatible state error
+			return err
+		}
+		state, err := checker.CouldTypeBeApplied(path)
 		if err != nil {
 			return err
 		}

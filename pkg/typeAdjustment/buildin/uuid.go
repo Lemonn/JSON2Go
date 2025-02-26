@@ -2,13 +2,17 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"github.com/google/uuid"
 	"go/ast"
 )
 
-type UUIDTypeChecker struct{}
+type UUIDTypeChecker struct {
+	utils     *utils.SeenTypeUtils
+	seenTypes map[string]*fieldData.PathData
+}
 
 func (u *UUIDTypeChecker) ForceSourceType() *string {
 	return nil
@@ -68,28 +72,25 @@ func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 
 func (u *UUIDTypeChecker) TypeExpansion() bool {
 	//TODO implement me
-	panic("implement me")
+	return false
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(seenTypes map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails) (typeAdjustment.State, error) {
-	var Type fieldData.Type
+func (u *UUIDTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
 	var Level int
 	var err error
 	//TODO check if its struct type and ignore
-	if len(seenTypes) > 1 {
+	if len(u.seenTypes[path].Types) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	for Type = range seenTypes {
-		break
-	}
-	if len(seenTypes[Type]) > 1 {
+	Type := u.utils.GetType(path)
+	if len(u.seenTypes[path].Types[Type]) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	for Level = range seenTypes[Type] {
+	for Level = range u.seenTypes[path].Types[Type] {
 		break
 	}
 
-	for value := range seenTypes[Type][Level] {
+	for value := range u.seenTypes[path].Types[Type][Level] {
 		_, err = uuid.Parse(value)
 		if err != nil {
 			return typeAdjustment.StateFailed, nil
@@ -102,11 +103,13 @@ func (u *UUIDTypeChecker) GetExtraCode() []ast.Decl {
 	return nil
 }
 
-func (u *UUIDTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
+func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, _ string, _ []typeAdjustment.TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error {
+	u.seenTypes = seenTypes
+	u.utils = utils.NewSeenTypeUtils(seenTypes)
 	return nil
 }
 
-func (u *UUIDTypeChecker) GetState() ([]*json.RawMessage, error) {
+func (u *UUIDTypeChecker) GetState() ([]json.RawMessage, error) {
 	return nil, nil
 }
 

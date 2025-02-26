@@ -5,7 +5,6 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/token"
-	"strings"
 	"unicode"
 )
 
@@ -116,7 +115,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 		break
 	}
 	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
-		levelOfArrays := g.getLevelOfArrays(fieldPath)
+		levelOfArrays := g.GetLevelOfArrays(fieldPath)
 
 		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].TypeAdjusterData.ActiveType != nil {
 			required = true
@@ -156,7 +155,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 					}(),
 				},
 			})
-		} else if !g.isStruct(fieldPath) {
+		} else if !g.IsStruct(fieldPath) {
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
 					Lhs: []ast.Expr{
@@ -210,10 +209,10 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 											Op: token.AND,
 											X: &ast.SelectorExpr{
 												X: &ast.Ident{
-													Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
+													Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0])),
 												},
 												Sel: &ast.Ident{
-													Name: g.getFieldName(fieldPath),
+													Name: utils.GetFieldName(fieldPath),
 												},
 											},
 										},
@@ -391,10 +390,10 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 											Op: token.AND,
 											X: &ast.SelectorExpr{
 												X: &ast.Ident{
-													Name: string(unicode.ToLower([]rune(g.getFieldName(path))[0])),
+													Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0])),
 												},
 												Sel: &ast.Ident{
-													Name: g.getFieldName(fieldPath),
+													Name: utils.GetFieldName(fieldPath),
 												},
 											},
 										},
@@ -584,7 +583,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 												},
 												Value: &ast.BasicLit{
 													Kind:  token.STRING,
-													Value: "\"" + g.getFieldName(path) + "\"",
+													Value: "\"" + utils.GetFieldName(path) + "\"",
 												},
 											},
 											&ast.KeyValueExpr{
@@ -1394,39 +1393,6 @@ func handleField(fData *fieldData.FieldData, structName string, fieldName string
 
 */
 
-func (g *Generator) getLevelOfArrays(path string) int {
-	var Type fieldData.Type
-	var Level int
-	for Type, _ = range g.seenTypes[path].Types {
-		break
-	}
-	for Level, _ = range g.seenTypes[path].Types[Type] {
-		break
-	}
-	return Level
-}
-
-func (g *Generator) getFieldType(path string, index int) ast.Expr {
-	pathElements := strings.Split(path, ".")
-	if v, ok := g.structPrefixes[pathElements[len(pathElements)-index]]; ok {
-		return &ast.SelectorExpr{
-			X:   &ast.StarExpr{X: &ast.Ident{Name: v}},
-			Sel: &ast.Ident{Name: pathElements[len(pathElements)-index]},
-		}
-	}
-	return &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}}
-}
-
-func (g *Generator) getFieldName(path string) string {
-	pathElements := strings.Split(path, ".")
-	return pathElements[len(pathElements)-1]
-}
-
-func (g *Generator) getParentFieldName(path string) string {
-	pathElements := strings.Split(path, ".")
-	return pathElements[len(pathElements)-2]
-}
-
 // TODO function to get struct and field name from path. Also respect the package in case one is given.
 func (g *Generator) handleField(path string) []ast.Stmt {
 	return []ast.Stmt{
@@ -1440,7 +1406,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 								Name: "unmarshalledValue",
 							},
 						},
-						Type: g.getBaseType(path),
+						Type: g.GetFieldType(path, true),
 					},
 				},
 			},
@@ -1502,10 +1468,10 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 			Lhs: []ast.Expr{
 				&ast.SelectorExpr{
 					X: &ast.Ident{
-						Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0])),
+						Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0])),
 					},
 					Sel: &ast.Ident{
-						Name: g.getFieldName(path),
+						Name: utils.GetFieldName(path),
 					},
 				},
 				&ast.Ident{
@@ -1516,7 +1482,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 			Rhs: []ast.Expr{
 				&ast.CallExpr{
 					Fun: &ast.Ident{
-						Name: "Unmarshall" + g.getFieldName(path),
+						Name: "UnMarshall" + utils.GetFieldName(path),
 					},
 					Args: []ast.Expr{
 						&ast.Ident{
@@ -1583,7 +1549,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 }
 
 func (g *Generator) handleArrayField(path string) []ast.Stmt {
-	levelOfArrays := g.getLevelOfArrays(path)
+	levelOfArrays := g.GetLevelOfArrays(path)
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -1595,7 +1561,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 								Name: "result",
 							},
 						},
-						Type: g.getBaseType(path),
+						Type: g.GetFieldType(path, false),
 					},
 				},
 			},
@@ -1613,7 +1579,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 			Rhs: []ast.Expr{
 				&ast.CallExpr{
 					Fun: &ast.Ident{
-						Name: "Unmarshall" + g.getFieldName(path),
+						Name: "UnMarshall" + utils.GetFieldName(path),
 					},
 					Args: []ast.Expr{
 						&ast.Ident{
@@ -1645,7 +1611,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 				},
 			},
 		},
-		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, &ast.Ident{Name: "result"}, "index"),
+		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}, &ast.Ident{Name: "result"}, "index"),
 		&ast.ExprStmt{
 			X: &ast.CallExpr{
 				Fun: &ast.Ident{
@@ -1674,7 +1640,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 								Name: "lt",
 							},
 						},
-						Type: utils.GeneratedNestedArray(levelOfArrays, g.getBaseType(path)),
+						Type: g.GetFieldType(path, false),
 					},
 				},
 			},
@@ -1732,7 +1698,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 				},
 			},
 		},
-		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(g.getParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: g.getFieldName(path)}}, g.getBaseType(path)),
+		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}, g.GetFieldType(path, true)),
 	}
 }
 

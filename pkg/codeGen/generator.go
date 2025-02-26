@@ -111,7 +111,7 @@ func (s *Generator) Generate() error {
 					}
 					if s.seenTypesUtils.IsStruct(fieldPath) {
 						pathsToProcess = append(pathsToProcess, fieldPath)
-						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll("out/"+fieldPath, ".", "/")})
+						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll(*s.basePath+"/"+fieldPath, ".", "/")})
 					}
 
 					pathElements := strings.Split(fieldPath, ".")
@@ -199,8 +199,6 @@ func (s *Generator) generateGoMod() {
 }
 
 func (s *Generator) addTypeConverterFunctions(path string, file *ast.File) error {
-	fmt.Println(path)
-
 	var elements map[string]*fieldData.ValueDetails
 	for level, _ := range s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)] {
 		elements = s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)][level]
@@ -221,7 +219,6 @@ func (s *Generator) addTypeConverterFunctions(path string, file *ast.File) error
 			file.Decls = append(file.Decls, UnMarshallExprFile.Decls[0])
 		}
 	}
-
 	return nil
 }
 
