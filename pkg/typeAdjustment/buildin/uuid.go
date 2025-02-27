@@ -14,6 +14,14 @@ type UUIDTypeChecker struct {
 	seenTypes map[string]*fieldData.PathData
 }
 
+func (u *UUIDTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
+	return nil
+}
+
+func (u *UUIDTypeChecker) GetVersion() string {
+	return "v0.0.1"
+}
+
 func (u *UUIDTypeChecker) ForceSourceType() *string {
 	return nil
 }

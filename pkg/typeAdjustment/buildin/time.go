@@ -21,6 +21,14 @@ type TimeTypeChecker struct {
 	seenTypes             map[string]*fieldData.PathData
 }
 
+func (t *TimeTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
+	return nil
+}
+
+func (t *TimeTypeChecker) GetVersion() string {
+	return "v0.0.1"
+}
+
 func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
 	return &TimeTypeChecker{
 		ignoreYearOnlyStrings: ignoreYearOnlyStrings,

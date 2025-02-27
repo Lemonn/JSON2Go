@@ -28,6 +28,7 @@ func (g *Generator) GetGlobalFunctions() ([]ast.Decl, []string) {
 	decls = append(decls, g.addAdditionalElementsError()...)
 	decls = append(decls, g.addCheckForFirstErrorNotOfTypeTFunction())
 	decls = append(decls, g.addGetAllErrorsOfTypeFunction())
+	decls = append(decls, g.addRequiredFieldMissingError()...)
 	return decls, g.getGlobalImports()
 }
 

@@ -258,6 +258,8 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			ta.seenTypes[path].TypeAdjusterData.SetTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].ForceSourceType = checker.ForceSourceType()
+			ta.seenTypes[path].TypeAdjusterData.CheckerVersion = checker.GetVersion()
+			ta.seenTypes[path].TypeAdjusterData.ModFileContents = checker.GetModFileContents()
 
 			err = ta.setFunctions(path, checker)
 			if err != nil {

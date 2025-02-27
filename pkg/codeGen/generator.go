@@ -15,6 +15,9 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 	"os"
 	"strings"
 	"time"
@@ -37,6 +40,7 @@ type Generator struct {
 	startTime         time.Time
 	globalFile        *ast.File
 	globalImportPath  string
+	goVersion         *string
 }
 
 func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeDeterminationFunction) (*Generator, error) {
@@ -78,6 +82,7 @@ func pathBuilder(moduleName *string, basePath *string) (string, error) {
 }
 
 func (s *Generator) Generate() error {
+
 	startPath, err := s.getStartPath()
 	if err != nil {
 		return err
@@ -234,12 +239,48 @@ func (s *Generator) addJSONMarshaller() error {
 		mGen := marshaller.NewGenerator(s.seenTypes)
 		s.globalFile.Decls = append(s.globalFile.Decls, mGen.GetGlobalFunctions()...)
 	}
-
+	//go:generate
 	return nil
 }
 
-func (s *Generator) generateGoMod() {
+func (s *Generator) generateGoMod() ([]byte, error) {
+	file, err := modfile.Parse("", []byte("module "+*s.moduleName+"\n\ngo "+*s.goVersion+"\n\n"), nil)
+	if err != nil {
+		return nil, err
+	}
 
+	var requiresMap map[string]*fieldData.ModFileContent
+	for _, pathData := range s.seenTypes {
+		if pathData.TypeAdjusterData != nil && pathData.TypeAdjusterData.ModFileContents != nil {
+			for _, modFileContent := range pathData.TypeAdjusterData.ModFileContents {
+				if !semver.IsValid(modFileContent.Version) {
+					return nil, fmt.Errorf("invalid semver version: %s", modFileContent.Version)
+				}
+				if v, ok := requiresMap[modFileContent.Path]; !ok {
+					requiresMap[modFileContent.Path] = modFileContent
+				} else {
+					if semver.Compare(v.Version, modFileContent.Version) == -1 {
+						requiresMap[modFileContent.Path].Version = modFileContent.Version
+					}
+					if !requiresMap[modFileContent.Path].Indirect || !modFileContent.Indirect {
+						requiresMap[modFileContent.Path].Indirect = false
+					}
+				}
+			}
+		}
+	}
+	var requires []*modfile.Require
+	for _, content := range requiresMap {
+		requires = append(requires, &modfile.Require{
+			Mod: module.Version{
+				Path:    content.Path,
+				Version: content.Version,
+			},
+			Indirect: content.Indirect,
+		})
+	}
+	file.SetRequireSeparateIndirect(requires)
+	return file.Format()
 }
 
 func (s *Generator) addTypeConverterFunctions(path string, file *ast.File) error {

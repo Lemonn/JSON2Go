@@ -1060,3 +1060,372 @@ func (g *Generator) addAdditionalElementsError() []ast.Decl {
 	})
 	return decls
 }
+
+func (g *Generator) addRequiredFieldMissingError() []ast.Decl {
+	var decls []ast.Decl
+	decls = append(decls, &ast.GenDecl{
+		Tok: token.TYPE,
+		Specs: []ast.Spec{
+			&ast.TypeSpec{
+				Name: &ast.Ident{
+					Name: "RequiredFieldMissingError",
+				},
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{
+						List: []*ast.Field{
+							&ast.Field{
+								Names: []*ast.Ident{
+									&ast.Ident{
+										Name: "Path",
+									},
+								},
+								Type: &ast.Ident{
+									Name: "string",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	decls = append(decls, &ast.FuncDecl{
+		Recv: &ast.FieldList{
+			List: []*ast.Field{
+				&ast.Field{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "e",
+						},
+					},
+					Type: &ast.StarExpr{
+						X: &ast.Ident{
+							Name: "RequiredFieldMissingError",
+						},
+					},
+				},
+			},
+		},
+		Name: &ast.Ident{
+			Name: "String",
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Type: &ast.Ident{
+							Name: "string",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						&ast.SelectorExpr{
+							X: &ast.Ident{
+								Name: "e",
+							},
+							Sel: &ast.Ident{
+								Name: "Path",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	decls = append(decls, &ast.FuncDecl{
+		Recv: &ast.FieldList{
+			List: []*ast.Field{
+				&ast.Field{
+					Names: []*ast.Ident{
+						&ast.Ident{
+							Name: "e",
+						},
+					},
+					Type: &ast.StarExpr{
+						X: &ast.Ident{
+							Name: "RequiredFieldMissingError",
+						},
+					},
+				},
+			},
+		},
+		Name: &ast.Ident{
+			Name: "Error",
+		},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Type: &ast.Ident{
+							Name: "string",
+						},
+					},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						&ast.CallExpr{
+							Fun: &ast.SelectorExpr{
+								X: &ast.Ident{
+									Name: "fmt",
+								},
+								Sel: &ast.Ident{
+									Name: "Sprintf",
+								},
+							},
+							Args: []ast.Expr{
+								&ast.BasicLit{
+									Kind:  token.STRING,
+									Value: "\"Required field missing at : %s\"",
+								},
+								&ast.SelectorExpr{
+									X: &ast.Ident{
+										Name: "e",
+									},
+									Sel: &ast.Ident{
+										Name: "Path",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	return decls
+}
+
+var _ = &ast.File{
+	Package: 1,
+	Name: &ast.Ident{
+		Name: "main",
+	},
+	Decls: []ast.Decl{
+		&ast.FuncDecl{
+			Recv: &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{
+							&ast.Ident{
+								Name: "e",
+							},
+						},
+						Type: &ast.StarExpr{
+							X: &ast.Ident{
+								Name: "RequiredFieldMissingError",
+							},
+						},
+					},
+				},
+			},
+			Name: &ast.Ident{
+				Name: "Error",
+			},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Type: &ast.Ident{
+								Name: "string",
+							},
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.IfStmt{
+						Cond: &ast.BinaryExpr{
+							X: &ast.Ident{
+								Name: "err",
+							},
+							Op: token.NEQ,
+							Y: &ast.Ident{
+								Name: "nil",
+							},
+						},
+						Body: &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.DeclStmt{
+									Decl: &ast.GenDecl{
+										Tok: token.VAR,
+										Specs: []ast.Spec{
+											&ast.ValueSpec{
+												Names: []*ast.Ident{
+													&ast.Ident{
+														Name: "additionalElementsError",
+													},
+												},
+												Type: &ast.StarExpr{
+													X: &ast.SelectorExpr{
+														X: &ast.Ident{
+															Name: "Globals",
+														},
+														Sel: &ast.Ident{
+															Name: "AdditionalElementsError",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+								&ast.DeclStmt{
+									Decl: &ast.GenDecl{
+										Tok: token.VAR,
+										Specs: []ast.Spec{
+											&ast.ValueSpec{
+												Names: []*ast.Ident{
+													&ast.Ident{
+														Name: "requiredFieldMissingError",
+													},
+												},
+												Type: &ast.StarExpr{
+													X: &ast.SelectorExpr{
+														X: &ast.Ident{
+															Name: "Globals",
+														},
+														Sel: &ast.Ident{
+															Name: "RequiredFieldMissingError",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+								&ast.IfStmt{
+									Cond: &ast.CallExpr{
+										Fun: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "errors",
+											},
+											Sel: &ast.Ident{
+												Name: "As",
+											},
+										},
+										Args: []ast.Expr{
+											&ast.Ident{
+												Name: "err",
+											},
+											&ast.UnaryExpr{
+												Op: token.AND,
+												X: &ast.Ident{
+													Name: "additionalElementsError",
+												},
+											},
+										},
+									},
+									Body: &ast.BlockStmt{
+										List: []ast.Stmt{
+											&ast.AssignStmt{
+												Lhs: []ast.Expr{
+													&ast.Ident{
+														Name: "joinedErrors",
+													},
+												},
+												Tok: token.ASSIGN,
+												Rhs: []ast.Expr{
+													&ast.CallExpr{
+														Fun: &ast.SelectorExpr{
+															X: &ast.Ident{
+																Name: "errors",
+															},
+															Sel: &ast.Ident{
+																Name: "Join",
+															},
+														},
+														Args: []ast.Expr{
+															&ast.Ident{
+																Name: "additionalElementsError",
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+									Else: &ast.IfStmt{
+										Cond: &ast.CallExpr{
+											Fun: &ast.SelectorExpr{
+												X: &ast.Ident{
+													Name: "errors",
+												},
+												Sel: &ast.Ident{
+													Name: "As",
+												},
+											},
+											Args: []ast.Expr{
+												&ast.Ident{
+													Name: "err",
+												},
+												&ast.UnaryExpr{
+													Op: token.AND,
+													X: &ast.Ident{
+														Name: "requiredFieldMissingError",
+													},
+												},
+											},
+										},
+										Body: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.AssignStmt{
+													Lhs: []ast.Expr{
+														&ast.Ident{
+															Name: "joinedErrors",
+														},
+													},
+													Tok: token.ASSIGN,
+													Rhs: []ast.Expr{
+														&ast.CallExpr{
+															Fun: &ast.SelectorExpr{
+																X: &ast.Ident{
+																	Name: "errors",
+																},
+																Sel: &ast.Ident{
+																	Name: "Join",
+																},
+															},
+															Args: []ast.Expr{
+																&ast.Ident{
+																	Name: "requiredFieldMissingError",
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+										Else: &ast.BlockStmt{
+											List: []ast.Stmt{
+												&ast.ReturnStmt{
+													Results: []ast.Expr{
+														&ast.Ident{
+															Name: "err",
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+}

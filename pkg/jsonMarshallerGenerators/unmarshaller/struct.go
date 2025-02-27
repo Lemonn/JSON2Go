@@ -231,83 +231,10 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 							},
 							Body: &ast.BlockStmt{
 								List: []ast.Stmt{
-									&ast.DeclStmt{
-										Decl: &ast.GenDecl{
-											Tok: token.VAR,
-											Specs: []ast.Spec{
-												&ast.ValueSpec{
-													Names: []*ast.Ident{
-														{
-															Name: "additionalElementsError",
-														},
-													},
-													Type: &ast.StarExpr{
-														X: &ast.SelectorExpr{X: &ast.Ident{Name: utils.GetPackageNameFromImportPath(g.globalsImportPath)}, Sel: &ast.Ident{Name: "AdditionalElementsError"}},
-													},
-												},
-											},
-										},
-									},
-									&ast.IfStmt{
-										Cond: &ast.CallExpr{
-											Fun: &ast.SelectorExpr{
-												X: &ast.Ident{
-													Name: "errors",
-												},
-												Sel: &ast.Ident{
-													Name: "As",
-												},
-											},
-											Args: []ast.Expr{
-												&ast.Ident{
-													Name: "err",
-												},
-												&ast.UnaryExpr{
-													Op: token.AND,
-													X: &ast.Ident{
-														Name: "additionalElementsError",
-													},
-												},
-											},
-										},
-										Body: &ast.BlockStmt{
-											List: []ast.Stmt{
-												&ast.AssignStmt{
-													Lhs: []ast.Expr{
-														&ast.Ident{
-															Name: "joinedErrors",
-														},
-													},
-													Tok: token.ASSIGN,
-													Rhs: []ast.Expr{
-														&ast.CallExpr{
-															Fun: &ast.SelectorExpr{
-																X: &ast.Ident{
-																	Name: "errors",
-																},
-																Sel: &ast.Ident{
-																	Name: "Join",
-																},
-															},
-															Args: []ast.Expr{
-																&ast.Ident{
-																	Name: "additionalElementsError",
-																},
-															},
-														},
-													},
-												},
-											},
-										},
-										Else: &ast.BlockStmt{
-											List: []ast.Stmt{
-												&ast.ReturnStmt{
-													Results: []ast.Expr{
-														&ast.Ident{
-															Name: "err",
-														},
-													},
-												},
+									&ast.ReturnStmt{
+										Results: []ast.Expr{
+											&ast.Ident{
+												Name: "err",
 											},
 										},
 									},
@@ -332,6 +259,54 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 						},
 					},
 				},
+				Else: func() ast.Stmt {
+					if g.seenTypes[fieldPath].RequiredField {
+						return &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.ExprStmt{
+									X: &ast.CallExpr{
+										Fun: &ast.SelectorExpr{
+											X: &ast.Ident{
+												Name: "errors",
+											},
+											Sel: &ast.Ident{
+												Name: "Join",
+											},
+										},
+										Args: []ast.Expr{
+											&ast.Ident{
+												Name: "err",
+											},
+											&ast.UnaryExpr{
+												Op: token.AND,
+												X: &ast.CompositeLit{
+													Type: &ast.SelectorExpr{
+														X: &ast.Ident{
+															Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
+														},
+														Sel: &ast.Ident{
+															Name: "RequiredFieldMissingError",
+														},
+													},
+													Elts: []ast.Expr{
+														&ast.KeyValueExpr{
+															Key: &ast.Ident{
+																Name: "Path",
+															},
+															Value: &ast.Ident{Name: "\"" + path + "\""},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						}
+					} else {
+						return nil
+					}
+				}(),
 			})
 		} else {
 			stmts = append(stmts, &ast.IfStmt{
@@ -416,12 +391,43 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 											Specs: []ast.Spec{
 												&ast.ValueSpec{
 													Names: []*ast.Ident{
-														{
+														&ast.Ident{
 															Name: "additionalElementsError",
 														},
 													},
 													Type: &ast.StarExpr{
-														X: &ast.SelectorExpr{X: &ast.Ident{Name: utils.GetPackageNameFromImportPath(g.globalsImportPath)}, Sel: &ast.Ident{Name: "AdditionalElementsError"}},
+														X: &ast.SelectorExpr{
+															X: &ast.Ident{
+																Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
+															},
+															Sel: &ast.Ident{
+																Name: "AdditionalElementsError",
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+									&ast.DeclStmt{
+										Decl: &ast.GenDecl{
+											Tok: token.VAR,
+											Specs: []ast.Spec{
+												&ast.ValueSpec{
+													Names: []*ast.Ident{
+														&ast.Ident{
+															Name: "requiredFieldMissingError",
+														},
+													},
+													Type: &ast.StarExpr{
+														X: &ast.SelectorExpr{
+															X: &ast.Ident{
+																Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
+															},
+															Sel: &ast.Ident{
+																Name: "RequiredFieldMissingError",
+															},
+														},
 													},
 												},
 											},
@@ -470,9 +476,6 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 															},
 															Args: []ast.Expr{
 																&ast.Ident{
-																	Name: "joinedErrors",
-																},
-																&ast.Ident{
 																	Name: "additionalElementsError",
 																},
 															},
@@ -481,12 +484,64 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 												},
 											},
 										},
-										Else: &ast.BlockStmt{
-											List: []ast.Stmt{
-												&ast.ReturnStmt{
-													Results: []ast.Expr{
-														&ast.Ident{
-															Name: "err",
+										Else: &ast.IfStmt{
+											Cond: &ast.CallExpr{
+												Fun: &ast.SelectorExpr{
+													X: &ast.Ident{
+														Name: "errors",
+													},
+													Sel: &ast.Ident{
+														Name: "As",
+													},
+												},
+												Args: []ast.Expr{
+													&ast.Ident{
+														Name: "err",
+													},
+													&ast.UnaryExpr{
+														Op: token.AND,
+														X: &ast.Ident{
+															Name: "requiredFieldMissingError",
+														},
+													},
+												},
+											},
+											Body: &ast.BlockStmt{
+												List: []ast.Stmt{
+													&ast.AssignStmt{
+														Lhs: []ast.Expr{
+															&ast.Ident{
+																Name: "joinedErrors",
+															},
+														},
+														Tok: token.ASSIGN,
+														Rhs: []ast.Expr{
+															&ast.CallExpr{
+																Fun: &ast.SelectorExpr{
+																	X: &ast.Ident{
+																		Name: "errors",
+																	},
+																	Sel: &ast.Ident{
+																		Name: "Join",
+																	},
+																},
+																Args: []ast.Expr{
+																	&ast.Ident{
+																		Name: "requiredFieldMissingError",
+																	},
+																},
+															},
+														},
+													},
+												},
+											},
+											Else: &ast.BlockStmt{
+												List: []ast.Stmt{
+													&ast.ReturnStmt{
+														Results: []ast.Expr{
+															&ast.Ident{
+																Name: "err",
+															},
 														},
 													},
 												},

@@ -92,8 +92,10 @@ type TypeAdjusterData struct {
 	// ActiveType represents the goland code string of the currently active type
 	ActiveType *string
 	// SetTimestamp Timestamp when the type replacement became active
-	SetTimestamp         int64 `json:"setTimestamp"`
-	LastCheckedTimestamp int64 `json:"lastCheckedTimestamp"`
+	SetTimestamp         int64             `json:"setTimestamp"`
+	LastCheckedTimestamp int64             `json:"lastCheckedTimestamp"`
+	CheckerVersion       string            `json:"checkerVersion"`
+	ModFileContents      []*ModFileContent `json:"modFileContents,omitempty"`
 }
 
 func (t *TypeAdjusterData) Combine(t1 *TypeAdjusterData) (*TypeAdjusterData, error) {
@@ -134,6 +136,12 @@ type ParseFunctions struct {
 	// ToTypeParseFunction Holds the function name, which converts from custom to json type
 	Marshall        string   `json:"marshall,omitempty"`
 	MarshallImports []string `json:"marshallImports,omitempty"`
+}
+
+type ModFileContent struct {
+	Path     string `json:"path"`
+	Version  string `json:"version"`
+	Indirect bool   `json:"indirect"`
 }
 
 type Type string
