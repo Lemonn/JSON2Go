@@ -48,19 +48,11 @@ func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath strin
 	if err != nil {
 		return nil, err
 	}
-	/*
-		var seenTypes map[string]*fieldData.PathData
-		err := json.Unmarshal(inputFile, &seenTypes)
-		if err != nil {
-			return nil, err
-		}
-
-	*/
 	return &Generator{
 		seenTypes:         inputFile,
 		files:             make(map[string]*FileData),
 		stackedMarshaller: map[string]*ast.File{},
-		basePath:          basePath,
+		basePath:          &internalBasePath,
 		moduleName:        moduleName,
 		typeAdjusters:     adjuster,
 		outputPath:        outputPath,
@@ -68,11 +60,14 @@ func NewCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath strin
 		startTime:         time.Now(),
 		globalFile:        nil,
 		globalImportPath:  internalBasePath + "/Globals",
+		goVersion:         utils.StringToPointer("1.23"),
 	}, nil
 }
 
 func pathBuilder(moduleName *string, basePath *string) (string, error) {
-	if moduleName != nil {
+	if moduleName != nil && basePath != nil {
+		return "", errors.New("cannot use both moduleName and basePath")
+	} else if moduleName != nil {
 		return *moduleName, nil
 	} else if basePath != nil {
 		return *basePath, nil
@@ -131,11 +126,13 @@ func (s *Generator) Generate() error {
 					}
 					if s.seenTypesUtils.IsStruct(fieldPath) {
 						pathsToProcess = append(pathsToProcess, fieldPath)
-						AstUtils.AddMissingImports(file, []string{strings.ReplaceAll(*s.basePath+"/"+fieldPath, ".", "/")})
+						AstUtils.AddMissingImports(file, []string{*s.basePath + strings.ReplaceAll("/"+fieldPath, ".", "/")})
 					}
 
 					pathElements := strings.Split(fieldPath, ".")
 					fields = append(fields, &ast.Field{
+						//Comment: &ast.CommentGroup{List: []*ast.Comment{{Slash: token.NoPos, Text: "Test"}}},
+						//Doc:     &ast.CommentGroup{List: []*ast.Comment{{Slash: token.NoPos, Text: "Test"}}},
 						Names: []*ast.Ident{{Name: pathElements[len(pathElements)-1]}},
 						Type:  expr,
 						//TODO set path correctly. Do not set a path if JsonFieldName == "". Write a function, that checks if omitempty should be set
@@ -239,7 +236,16 @@ func (s *Generator) addJSONMarshaller() error {
 		mGen := marshaller.NewGenerator(s.seenTypes)
 		s.globalFile.Decls = append(s.globalFile.Decls, mGen.GetGlobalFunctions()...)
 	}
-	//go:generate
+	if s.moduleName != nil {
+		mod, err := s.generateGoMod()
+		if err != nil {
+			return err
+		}
+		err = os.WriteFile(s.outputPath+"/go.mod", mod, 0666)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
