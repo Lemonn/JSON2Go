@@ -146,7 +146,7 @@ func (ta *TypeAdjuster) getOriginalType(path string) ast.Expr {
 */
 
 func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunction) error {
-	unmarshallFunction, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
+	unmarshallFunction, unmarshallImports, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunct
 		return err
 	}
 
-	marshallFunction, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, checker))
+	marshallFunction, marshallImports, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, checker))
 	if err != nil {
 		return err
 	}
@@ -168,9 +168,9 @@ func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunct
 
 	ta.seenTypes[path].TypeAdjusterData.ParseFunctions = &fieldData.ParseFunctions{
 		Unmarshall:        unmarshallFunctionOutput.String(),
-		UnmarshallImports: nil,
+		UnmarshallImports: unmarshallImports,
 		Marshall:          marshallFunctionOutput.String(),
-		MarshallImports:   nil,
+		MarshallImports:   marshallImports,
 	}
 	return nil
 }

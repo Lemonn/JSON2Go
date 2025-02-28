@@ -26,7 +26,7 @@ func (u *UUIDTypeChecker) ForceSourceType() *string {
 	return nil
 }
 
-func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -48,10 +48,10 @@ func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 			},
 		},
 	}
-	return functionScaffold, nil
+	return functionScaffold, []string{"github.com/google/uuid"}, nil
 }
 
-func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -75,7 +75,7 @@ func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 			},
 		},
 	}
-	return functionScaffold, nil
+	return functionScaffold, []string{"github.com/google/uuid"}, nil
 }
 
 func (u *UUIDTypeChecker) TypeExpansion() bool {
@@ -107,8 +107,8 @@ func (u *UUIDTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State,
 	return typeAdjustment.StateApplicable, nil
 }
 
-func (u *UUIDTypeChecker) GetExtraCode() []ast.Decl {
-	return nil
+func (u *UUIDTypeChecker) GetExtraCode() ([]ast.Decl, []string) {
+	return nil, nil
 }
 
 func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, _ string, _ []typeAdjustment.TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error {
@@ -130,10 +130,6 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 			Name: "UUID",
 		},
 	}
-}
-
-func (u *UUIDTypeChecker) GetRequiredImports() []string {
-	return []string{"github.com/google/uuid"}
 }
 
 func (u *UUIDTypeChecker) GetName() string {

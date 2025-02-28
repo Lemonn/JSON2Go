@@ -78,7 +78,7 @@ func (t *TimeTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State,
 	return typeAdjustment.StateApplicable, nil
 }
 
-func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -105,10 +105,10 @@ func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 			},
 		},
 	}
-	return functionScaffold, nil
+	return functionScaffold, []string{"time"}, nil
 }
 
-func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -135,11 +135,11 @@ func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 			},
 		},
 	}
-	return functionScaffold, nil
+	return functionScaffold, []string{"time"}, nil
 }
 
-func (t *TimeTypeChecker) GetExtraCode() []ast.Decl {
-	return []ast.Decl{}
+func (t *TimeTypeChecker) GetExtraCode() ([]ast.Decl, []string) {
+	return []ast.Decl{}, nil
 }
 
 func (t *TimeTypeChecker) TypeExpansion() bool {
