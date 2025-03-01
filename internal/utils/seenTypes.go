@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"errors"
+	"fmt"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/parser"
@@ -90,8 +93,46 @@ func (s *SeenTypeUtils) GetFieldType(path string, withoutArray bool) (expr ast.E
 		}
 		expr = GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 	}
-
 	return expr
+}
+
+func (s *SeenTypeUtils) IsPointerType(path string) bool {
+	if _, ok := s.seenTypes[path].Types[fieldData.Null]; ok {
+		return true
+	}
+	return false
+}
+
+func (s *SeenTypeUtils) IsBasicType(path string) bool {
+	b, _, _ := s.IsBasicTypeWhitDetails(path)
+	return b
+}
+
+func (s *SeenTypeUtils) IsBasicTypeWhitDetails(path string) (bool, int, fieldData.Type) {
+	var setType *fieldData.Type
+	var setLevel *int
+	if s.seenTypes[path].Types[fieldData.EmptyStruct] != nil || s.seenTypes[path].Types[fieldData.Field] != nil {
+		return false, 0, fieldData.Unsupported
+	}
+	for Type, levels := range s.seenTypes[path].Types {
+		if !(Type == fieldData.Null || Type == fieldData.EmptyArray) && setType != nil && *setType != Type {
+			return false, 0, fieldData.Unsupported
+		} else if !(Type == fieldData.Null || Type == fieldData.EmptyArray) && setType == nil {
+			setType = &Type
+		}
+		for level, _ := range levels {
+			if setLevel == nil {
+				setLevel = &level
+			} else if *setLevel != level {
+				return false, 0, fieldData.Unsupported
+			}
+		}
+
+	}
+	if setType != nil && setLevel != nil {
+		return true, *setLevel, *setType
+	}
+	return false, 0, fieldData.Unsupported
 }
 
 func (s *SeenTypeUtils) GetType(path string) fieldData.Type {
@@ -231,4 +272,92 @@ func (s *SeenTypeUtils) GetLevelOfArrays(path string) int {
 		}
 	}
 	return levelOfArrays
+}
+
+func (s *SeenTypeUtils) GetMaxFieldCount(path string) int {
+	var highestValue int
+	for _, levels := range s.seenTypes[path].Types {
+		for _, values := range levels {
+			for _, details := range values {
+				if highestValue < details.Count {
+					highestValue = details.Count
+
+				}
+			}
+		}
+	}
+	return highestValue
+}
+
+func (s *SeenTypeUtils) GetParentPath(path string) string {
+	pathElements := strings.Split(path, ".")
+	if len(pathElements) > 1 {
+		return strings.Join(pathElements[:len(pathElements)-1], ".")
+	} else {
+		return path
+	}
+}
+
+func (s *SeenTypeUtils) IsRootPath(path string) bool {
+	if len(strings.Split(path, ".")) == 1 {
+		return true
+	}
+	return false
+}
+
+func (s *SeenTypeUtils) Omitempty(path string) bool {
+	if s.IsRootPath(path) {
+		/*
+			for Type, levels := range s.seenTypes[path].Types {
+				if Type == fieldData.Null || Type == fieldData.EmptyArray || Type == fieldData.EmptyStruct {
+					return false
+				}
+				for _, values := range levels {
+					for _, details := range values {
+						if details.Count >= s.seenFilesCount {
+							return false
+						}
+					}
+				}
+			}
+			return true
+		*/
+		return false
+	} else {
+		parentPath := s.GetParentPath(path)
+		var pathValueCount int
+		var brohibitingType bool
+		for Type, levels := range s.seenTypes[parentPath].Types {
+			for _, values := range levels {
+				for g, details := range values {
+					if g == path {
+						if Type == fieldData.Null || Type == fieldData.EmptyArray || Type == fieldData.EmptyStruct {
+							brohibitingType = true
+						}
+						pathValueCount += details.Count
+					}
+				}
+			}
+		}
+		if pathValueCount < s.seenTypes[parentPath].SeenCounter-s.seenTypes[parentPath].IntroductionCount {
+			if brohibitingType {
+				s.seenTypes[path].Error = errors.Join(s.seenTypes[path].Error, &j2gErrors.AmbiguousFieldPresenceError{})
+				return false
+			} else {
+				return true
+			}
+		} else {
+			return false
+		}
+	}
+}
+
+func (s *SeenTypeUtils) GetJsonTag(path string) string {
+	return fmt.Sprintf("`json:\"%s%s\"`", s.seenTypes[path].JsonFieldName, func() string {
+		if s.Omitempty(path) {
+			return ",omitempty"
+		} else {
+			return ""
+		}
+	}())
 }
