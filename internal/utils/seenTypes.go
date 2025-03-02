@@ -20,8 +20,8 @@ func NewSeenTypeUtils(seenTypes map[string]*fieldData.PathData) *SeenTypeUtils {
 }
 
 func (s *SeenTypeUtils) GetAdjustedFieldType(path string) (expr ast.Expr, err error) {
-	if s.seenTypes[path].TypeAdjusterData != nil && s.seenTypes[path].TypeAdjusterData.ActiveType != nil {
-		expr, err = parser.ParseExpr(*s.seenTypes[path].TypeAdjusterData.ActiveType)
+	if s.seenTypes[path].TypeAdjusterData != nil && s.seenTypes[path].ActiveType != nil {
+		expr, err = parser.ParseExpr(*s.seenTypes[path].ActiveType)
 		if err != nil {
 			return nil, err
 		}
@@ -332,7 +332,7 @@ func (s *SeenTypeUtils) Omitempty(path string) bool {
 			}
 		}
 
-		if s.seenTypes[path].SeenCounter < s.seenTypes[parentPath].SeenCounter {
+		if s.seenTypes[path].SeenCounter+s.seenTypes[path].IntroductionCount < s.seenTypes[parentPath].SeenCounter {
 			return true
 		} else {
 			return false

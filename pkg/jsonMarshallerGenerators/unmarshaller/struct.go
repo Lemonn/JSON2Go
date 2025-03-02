@@ -116,7 +116,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
 		levelOfArrays := g.GetLevelOfArrays(fieldPath)
 
-		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].TypeAdjusterData.ActiveType != nil {
+		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].ActiveType != nil {
 			required = true
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
@@ -660,7 +660,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 			},
 		},
 	})
-	return stmts, []string{"encoding/json", "errors", "fmt", g.globalsImportPath}, nil
+	return stmts, []string{"encoding/json", "errors", g.globalsImportPath}, nil
 }
 
 // TODO function to get struct and field name from path. Also respect the package in case one is given.

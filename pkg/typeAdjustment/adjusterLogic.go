@@ -232,7 +232,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 			}
 			ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster = &checkerName
 			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = []json.RawMessage{checkerState}
-			ta.seenTypes[path].TypeAdjusterData.ActiveType = &typeString
+			ta.seenTypes[path].ActiveType = &typeString
 			ta.seenTypes[path].TypeAdjusterData.SetTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].ForceSourceType = checker.ForceSourceType()
