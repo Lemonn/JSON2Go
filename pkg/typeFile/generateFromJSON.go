@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"reflect"
 	"strconv"
 	"time"
 )
@@ -39,6 +40,7 @@ func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousAr
 	if p.eaa {
 		p.externalizeAnonymousArray(structName)
 	}
+
 	return p.seenTypes, err
 }
 
@@ -54,7 +56,6 @@ func (p *Parser) externalizeAnonymousArray(structName string) {
 			p.seenTypes[structName] = &fieldData.PathData{
 				Types:                   map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
 				JsonFieldName:           "",
-				Package:                 nil,
 				Omitempty:               false,
 				TypeAdjusterData:        nil,
 				Error:                   nil,
@@ -97,8 +98,17 @@ func (p *Parser) codeGen(jsonData interface{}, path string, depth int) error {
 
 // Processes JSON-Struct elements
 func (p *Parser) processStruct(structData map[string]interface{}, path string, depth int) error {
+	if _, ok := p.seenTypes[path]; !ok {
+		p.seenTypes[path] = &fieldData.PathData{}
+	}
+	p.seenTypes[path].SeenCounter++
 	for fieldName, field := range structData {
 		p.setTypeAtLevel(path, fieldData.Field, depth, path+"."+utils.JsonNameToGoName(fieldName))
+		p.seenTypes[path].IntroductionCount = p.seenTypes[path].SeenCounter - 1
+		p.seenTypes[path].LastSeenTimestamp = p.startTime.Unix()
+		if p.seenTypes[path].FirstSeenTimestamp == 0 {
+			p.seenTypes[path].FirstSeenTimestamp = p.startTime.Unix()
+		}
 		if _, ok := p.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)]; !ok {
 			p.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)] = &fieldData.PathData{JsonFieldName: fieldName}
 		} else {
@@ -120,6 +130,7 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 	var err error
 	depth++
 	for _, i := range sliceData {
+		fmt.Println(reflect.TypeOf(i))
 		switch v := i.(type) {
 		case []interface{}:
 			err = p.processSlice(v, path, depth)
@@ -136,6 +147,11 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 			if err != nil {
 				return err
 			}
+		case nil:
+			err = p.processField(v, path, depth)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if len(sliceData) == 0 {
@@ -145,6 +161,10 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 }
 
 func (p *Parser) processField(field interface{}, path string, depth int) error {
+	if _, ok := p.seenTypes[path]; !ok {
+		p.seenTypes[path] = &fieldData.PathData{}
+	}
+	p.seenTypes[path].SeenCounter++
 	var fieldValue string
 	switch t := field.(type) {
 	case float64:
@@ -156,9 +176,12 @@ func (p *Parser) processField(field interface{}, path string, depth int) error {
 		fieldValue = "false"
 	case string:
 		fieldValue = field.(string)
+	case nil:
+		fieldValue = "null"
 	default:
 		return errors.New(fmt.Sprintf("unsupported type of field data: %T", field))
 	}
+	fmt.Println(reflect.TypeOf(field))
 	Type, err := fieldData.TypeFromAny(field)
 	if err != nil {
 		return err

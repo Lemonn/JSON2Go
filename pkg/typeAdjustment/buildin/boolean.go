@@ -2,38 +2,238 @@ package buildin
 
 import (
 	"encoding/json"
+	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/token"
+	"maps"
 )
 
 type Boolean struct {
-	trueValues  map[string]struct{}
-	falseValues map[string]struct{}
+	state         *BooleanState
+	seenTypes     map[string]*fieldData.PathData
+	seenTypeUtils *utils.SeenTypeUtils
+	activePath    string
 }
 
-func NewBoolean() *Boolean {
+type BooleanState struct {
+	TrueStrings  map[string]struct{} `json:"trueValues,omitempty"`
+	FalseStrings map[string]struct{} `json:"falseValues,omitempty"`
+}
+
+func NewBoolean(trueStrings map[string]struct{}, falseStrings map[string]struct{}) *Boolean {
+	if trueStrings == nil || len(trueStrings) == 0 {
+		trueStrings = map[string]struct{}{"true": {}}
+	}
+	if falseStrings == nil || len(falseStrings) == 0 {
+		falseStrings = map[string]struct{}{"false": {}}
+	}
 	return &Boolean{
-		trueValues:  map[string]struct{}{"true": {}},
-		falseValues: map[string]struct{}{"false": {}},
+		state: &BooleanState{
+			TrueStrings:  trueStrings,
+			FalseStrings: falseStrings,
+		},
 	}
 }
 
-func (b *Boolean) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
-	for s, _ := range seenValues {
-		if s != "true" && s != "false" {
-			return typeAdjustment.StateFailed, nil
+func (b *Boolean) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
+	basicType, Level, Type := b.seenTypeUtils.IsBasicTypeWhitDetails(path)
+	if !basicType {
+		return typeAdjustment.StateFailed, nil
+	}
+	for s, _ := range b.seenTypes[path].Types[Type][Level] {
+		if _, ok := b.state.TrueStrings[s]; ok {
+			return typeAdjustment.StateApplicable, nil
+		} else if _, ok := b.state.FalseStrings[s]; ok {
+			return typeAdjustment.StateApplicable, nil
 		}
 	}
-	return typeAdjustment.StateApplicable, nil
+	return typeAdjustment.StateFailed, nil
 }
 
-func (b *Boolean) GetType() ast.Expr {
-	return &ast.Ident{Name: "bool"}
+func (b *Boolean) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+	if len(b.state.TrueStrings) > 1 || len(b.state.FalseStrings) > 1 {
+		var trueMapTypesExpr []ast.Expr
+		for v, _ := range b.state.TrueStrings {
+			trueMapTypesExpr = append(trueMapTypesExpr, &ast.KeyValueExpr{
+				Key: &ast.BasicLit{
+					Kind:  token.STRING,
+					Value: "\"" + v + "\"",
+				},
+				Value: &ast.CompositeLit{},
+			})
+		}
+
+		var falseMapTypesExpr []ast.Expr
+		for v, _ := range b.state.FalseStrings {
+			falseMapTypesExpr = append(falseMapTypesExpr, &ast.KeyValueExpr{
+				Key: &ast.BasicLit{
+					Kind:  token.STRING,
+					Value: "\"" + v + "\"",
+				},
+				Value: &ast.CompositeLit{},
+			})
+		}
+
+		functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.Ident{
+					Name: "trueStrings",
+				},
+			},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{
+				&ast.CompositeLit{
+					Type: &ast.MapType{
+						Key: &ast.Ident{
+							Name: "string",
+						},
+						Value: &ast.StructType{
+							Fields: &ast.FieldList{},
+						},
+					},
+					Elts: trueMapTypesExpr,
+				},
+			},
+		})
+		functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.AssignStmt{
+			Lhs: []ast.Expr{
+				&ast.Ident{
+					Name: "falseStrings",
+				},
+			},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{
+				&ast.CompositeLit{
+					Type: &ast.MapType{
+						Key: &ast.Ident{
+							Name: "string",
+						},
+						Value: &ast.StructType{
+							Fields: &ast.FieldList{},
+						},
+					},
+					Elts: falseMapTypesExpr,
+				},
+			},
+		})
+		functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
+			Cond: &ast.Ident{
+				Name: "baseValue",
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.RangeStmt{
+						Key: &ast.Ident{
+							Name: "str",
+						},
+						Value: &ast.Ident{
+							Name: "_",
+						},
+						Tok: token.DEFINE,
+						X: &ast.Ident{
+							Name: "trueStrings",
+						},
+						Body: &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.ReturnStmt{
+									Results: []ast.Expr{
+										&ast.Ident{
+											Name: "str",
+										},
+										&ast.Ident{
+											Name: "nil",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Else: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.RangeStmt{
+						Key: &ast.Ident{
+							Name: "str",
+						},
+						Value: &ast.Ident{
+							Name: "_",
+						},
+						Tok: token.DEFINE,
+						X: &ast.Ident{
+							Name: "falseStrings",
+						},
+						Body: &ast.BlockStmt{
+							List: []ast.Stmt{
+								&ast.ReturnStmt{
+									Results: []ast.Expr{
+										&ast.Ident{
+											Name: "str",
+										},
+										&ast.Ident{
+											Name: "nil",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	} else {
+		functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
+			Cond: &ast.Ident{
+				Name: "baseValue",
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.BasicLit{
+								Kind: token.STRING,
+								Value: "\"" + func() string {
+									for s, _ := range b.state.TrueStrings {
+										return s
+									}
+									return "true"
+								}() + "\"",
+							},
+							&ast.Ident{
+								Name: "nil",
+							},
+						},
+					},
+				},
+			},
+			Else: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.BasicLit{
+								Kind: token.STRING,
+								Value: "\"" + func() string {
+									for s, _ := range b.state.FalseStrings {
+										return s
+									}
+									return "false"
+								}() + "\"",
+							},
+							&ast.Ident{
+								Name: "nil",
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+	return functionScaffold, []string{}, nil
 }
 
-func (b *Boolean) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (b *Boolean) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.BinaryExpr{
@@ -132,64 +332,62 @@ func (b *Boolean) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast
 			},
 		},
 	})
-	return functionScaffold, nil
+	return functionScaffold, []string{"errors"}, nil
 }
 
-func (b *Boolean) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
-	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
-		Cond: &ast.Ident{
-			Name: "baseValue",
-		},
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.BasicLit{
-							Kind:  token.STRING,
-							Value: "\"true\"",
-						},
-						&ast.Ident{
-							Name: "nil",
-						},
-					},
-				},
-			},
-		},
-		Else: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&ast.ReturnStmt{
-					Results: []ast.Expr{
-						&ast.BasicLit{
-							Kind:  token.STRING,
-							Value: "\"false\"",
-						},
-						&ast.Ident{
-							Name: "nil",
-						},
-					},
-				},
-			},
-		},
-	})
-	return functionScaffold, nil
-}
-
-func (b *Boolean) GetRequiredImports() []string {
+func (b *Boolean) SetState(states []json.RawMessage, _ string, _ []typeAdjustment.TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error {
+	if b.state == nil {
+		b.state = &BooleanState{
+			TrueStrings:  make(map[string]struct{}),
+			FalseStrings: make(map[string]struct{}),
+		}
+	}
+	for _, state := range states {
+		var lbs BooleanState
+		err := json.Unmarshal(state, &lbs)
+		if err != nil {
+			return err
+		}
+		maps.Copy(b.state.FalseStrings, lbs.FalseStrings)
+		maps.Copy(b.state.TrueStrings, lbs.TrueStrings)
+	}
+	b.seenTypes = seenTypes
 	return nil
 }
 
-func (b *Boolean) SetFile(_ *ast.File) {
+func (b *Boolean) GetState() (json.RawMessage, error) {
+	return json.Marshal(b.state)
+}
 
+func (b *Boolean) GetExtraCode() ([]ast.Decl, []string) {
+	return nil, nil
+}
+
+func (b *Boolean) TypeExpansion() bool {
+	return false
+}
+
+func (b *Boolean) ForceSourceType() *string {
+	return nil
+}
+
+func (b *Boolean) GetModFileContents() []*fieldData.ModFileContent {
+	return nil
+}
+
+func (b *Boolean) GetVersion() string {
+	return "v0.0.1"
+}
+
+func (b *Boolean) GetType() ast.Expr {
+	var expr ast.Expr
+	expr = &ast.Ident{Name: "bool"}
+	if b.seenTypeUtils.PointerType(b.activePath) {
+		expr = &ast.StarExpr{X: expr}
+	}
+	return expr
 }
 
 func (b *Boolean) GetName() string {
 	return "json2Go.Boolean"
-}
-
-func (b *Boolean) SetState(_ []*json.RawMessage, _ string) error {
-	return nil
-}
-
-func (b *Boolean) GetState() ([]*json.RawMessage, error) {
-	return nil, nil
 }

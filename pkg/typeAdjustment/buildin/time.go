@@ -200,12 +200,12 @@ func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string,
 	return nil
 }
 
-func (t *TimeTypeChecker) GetState() ([]json.RawMessage, error) {
+func (t *TimeTypeChecker) GetState() (json.RawMessage, error) {
 	b, err := json.Marshal(t.state)
 	if err != nil {
 		return nil, err
 	}
-	return []json.RawMessage{b}, nil
+	return b, nil
 }
 
 func (t *TimeTypeChecker) GetType() ast.Expr {

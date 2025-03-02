@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/parser"
@@ -96,13 +94,6 @@ func (s *SeenTypeUtils) GetFieldType(path string, withoutArray bool) (expr ast.E
 	return expr
 }
 
-func (s *SeenTypeUtils) IsPointerType(path string) bool {
-	if _, ok := s.seenTypes[path].Types[fieldData.Null]; ok {
-		return true
-	}
-	return false
-}
-
 func (s *SeenTypeUtils) IsBasicType(path string) bool {
 	b, _, _ := s.IsBasicTypeWhitDetails(path)
 	return b
@@ -146,10 +137,26 @@ func (s *SeenTypeUtils) GetType(path string) fieldData.Type {
 	return fieldData.Unsupported
 }
 
+func (s *SeenTypeUtils) ContainsEmptyType(path string) bool {
+	if _, ok := s.seenTypes[path].Types[fieldData.EmptyStruct]; ok {
+		return true
+	} else if _, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+		return true
+	}
+	return false
+}
+
+func (s *SeenTypeUtils) ContainsPointerType(path string) bool {
+	if _, ok := s.seenTypes[path].Types[fieldData.Null]; ok {
+		return true
+	}
+	return false
+}
+
 func (s *SeenTypeUtils) PointerType(path string) bool {
 	var PointerType bool
 	var Level int
-	if len(s.seenTypes[path].Types) == 2 {
+	if len(s.seenTypes[path].Types) == 2 || (len(s.seenTypes[path].Types) == 3 && s.ContainsEmptyType(path)) {
 		if _, ok := s.seenTypes[path].Types[fieldData.Field]; ok {
 			if v, ok := s.seenTypes[path].Types[fieldData.Null]; ok {
 				for Level, _ = range s.seenTypes[path].Types[fieldData.Field] {
@@ -195,7 +202,7 @@ func (s *SeenTypeUtils) PointerType(path string) bool {
 func (s *SeenTypeUtils) EmptySubtype(path string) bool {
 	var EmptySubtype bool
 	var Level int
-	if len(s.seenTypes[path].Types) == 2 {
+	if len(s.seenTypes[path].Types) == 2 || (len(s.seenTypes[path].Types) == 3 && s.ContainsPointerType(path)) {
 		if _, ok := s.seenTypes[path].Types[fieldData.Field]; ok {
 			if v, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
 				for Level, _ = range s.seenTypes[path].Types[fieldData.Field] {
@@ -246,7 +253,7 @@ func (s *SeenTypeUtils) EmptySubtype(path string) bool {
 }
 
 func (s *SeenTypeUtils) IsStruct(path string) bool {
-	if len(s.seenTypes[path].Types) == 1 || s.EmptySubtype(path) {
+	if len(s.seenTypes[path].Types) == 1 || s.EmptySubtype(path) || s.PointerType(path) {
 		Type := s.GetType(path)
 		if len(s.seenTypes[path].Types[Type]) == 1 {
 			if Type == fieldData.Field {
@@ -307,48 +314,30 @@ func (s *SeenTypeUtils) IsRootPath(path string) bool {
 
 func (s *SeenTypeUtils) Omitempty(path string) bool {
 	if s.IsRootPath(path) {
-		/*
-			for Type, levels := range s.seenTypes[path].Types {
-				if Type == fieldData.Null || Type == fieldData.EmptyArray || Type == fieldData.EmptyStruct {
-					return false
-				}
-				for _, values := range levels {
-					for _, details := range values {
-						if details.Count >= s.seenFilesCount {
-							return false
-						}
-					}
-				}
-			}
-			return true
-		*/
 		return false
 	} else {
 		parentPath := s.GetParentPath(path)
-		var pathValueCount int
-		var brohibitingType bool
-		for Type, levels := range s.seenTypes[parentPath].Types {
-			for _, values := range levels {
-				for g, details := range values {
-					if g == path {
-						if Type == fieldData.Null || Type == fieldData.EmptyArray || Type == fieldData.EmptyStruct {
-							brohibitingType = true
-						}
-						pathValueCount += details.Count
-					}
-				}
+		LevelOfArrays := s.GetLevelOfArrays(path)
+		if _, ok := s.seenTypes[parentPath].Types[fieldData.EmptyStruct]; ok {
+			if _, ok := s.seenTypes[parentPath].Types[fieldData.EmptyStruct][LevelOfArrays]; ok {
+				return false
+			}
+		} else if _, ok := s.seenTypes[path].Types[fieldData.EmptyArray]; ok {
+			if _, ok := s.seenTypes[path].Types[fieldData.EmptyArray][LevelOfArrays]; ok {
+				return false
+			}
+		} else if _, ok := s.seenTypes[path].Types[fieldData.Null]; ok {
+			if _, ok := s.seenTypes[path].Types[fieldData.Null][LevelOfArrays]; ok {
+				return false
 			}
 		}
-		if pathValueCount < s.seenTypes[parentPath].SeenCounter-s.seenTypes[parentPath].IntroductionCount {
-			if brohibitingType {
-				s.seenTypes[path].Error = errors.Join(s.seenTypes[path].Error, &j2gErrors.AmbiguousFieldPresenceError{})
-				return false
-			} else {
-				return true
-			}
+
+		if s.seenTypes[path].SeenCounter < s.seenTypes[parentPath].SeenCounter {
+			return true
 		} else {
 			return false
 		}
+
 	}
 }
 

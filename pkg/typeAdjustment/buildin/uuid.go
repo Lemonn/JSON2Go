@@ -83,6 +83,10 @@ func (u *UUIDTypeChecker) TypeExpansion() bool {
 	return false
 }
 
+func (u *UUIDTypeChecker) IsBasicType() bool {
+	return false
+}
+
 func (u *UUIDTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
 	var Level int
 	var err error
@@ -117,7 +121,7 @@ func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, _ string, _ []typeAdjust
 	return nil
 }
 
-func (u *UUIDTypeChecker) GetState() ([]json.RawMessage, error) {
+func (u *UUIDTypeChecker) GetState() (json.RawMessage, error) {
 	return nil, nil
 }
 

@@ -48,6 +48,7 @@ type DstGenerator struct {
 	globalImportPath  string
 	goVersion         *string
 	seenFilesCount    int
+	globalFileName    string
 }
 
 func NewDstCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeDeterminationFunction) (*DstGenerator, error) {
@@ -66,8 +67,12 @@ func NewDstCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath st
 		seenTypesUtils:    utils.NewSeenTypeUtils(inputFile),
 		startTime:         time.Now(),
 		globalFile:        nil,
+		globalImportsFile: nil,
+		globalFileFSet:    nil,
 		globalImportPath:  internalBasePath + "/Globals",
 		goVersion:         utils.StringToPointer("1.23"),
+		seenFilesCount:    0,
+		globalFileName:    "Globals",
 	}, nil
 }
 
@@ -158,7 +163,6 @@ func (s *DstGenerator) Generate() error {
 				if err != nil {
 					return err
 				}
-				go func() {}()
 				field := &dst.Field{
 					Names: []*dst.Ident{{Name: pathElements[len(pathElements)-1]}},
 					Type:  decorate.(dst.Expr),
@@ -168,7 +172,6 @@ func (s *DstGenerator) Generate() error {
 							Start:  []string{"//" + fieldPath},
 						},
 					},
-					//TODO set path correctly. Do not set a path if JsonFieldName == "".
 					Tag: &dst.BasicLit{Kind: token.STRING, Value: s.seenTypesUtils.GetJsonTag(fieldPath)},
 				}
 				fields = append(fields, field)
@@ -403,7 +406,6 @@ func (s *DstGenerator) getStartPath() (string, error) {
 
 func (s *DstGenerator) writeFiles() error {
 	for path, file := range s.files {
-
 		if len(file.importsFile.Decls) > 0 {
 			imports, err := decorator.Decorate(nil, file.importsFile.Decls[0])
 			if err != nil {

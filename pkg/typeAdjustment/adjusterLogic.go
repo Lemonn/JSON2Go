@@ -6,7 +6,7 @@ import (
 	"errors"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	errors2 "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
+	j2gError "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
 	"go/ast"
 	"go/printer"
 	"go/token"
@@ -118,33 +118,6 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminati
 	}
 }
 
-/*
-func (ta *TypeAdjuster) getOriginalType(path string) ast.Expr {
-	var Type fieldData.Type
-	if len(ta.seenTypes[path].Types) >= 0 {
-		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
-	}
-	for Type = range ta.seenTypes[path].Types {
-		break
-	}
-	if len(ta.seenTypes[path].Types[Type]) >= 1 {
-		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
-	}
-	pathElements := strings.Split(path, ".")
-	switch Type {
-	case fieldData.Field:
-		return &ast.StarExpr{X: &ast.Ident{Name: pathElements[len(pathElements)-1]}}
-	case fieldData.EmptyArray:
-		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
-	case fieldData.EmptyStruct:
-		return &ast.InterfaceType{Methods: &ast.FieldList{List: []*ast.Field{}}}
-	default:
-		return &ast.Ident{Name: Type.String()}
-	}
-}
-
-*/
-
 func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunction) error {
 	unmarshallFunction, unmarshallImports, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
 	if err != nil {
@@ -191,7 +164,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 		//TODO set checker state
 		checker, err := ta.searchTypeDeterminationFunctionByName(*ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster)
 		if err != nil {
-			return errors2.ActiveAdjusterNotFoundError{}
+			return j2gError.ActiveAdjusterNotFoundError{}
 		}
 		state, err := checker.CouldTypeBeApplied(path)
 		if err != nil {
@@ -205,17 +178,22 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 				if err != nil {
 					return err
 				}
-				//TODO set TypeExpansionError
+				ta.seenTypes[path].Error = errors.Join(ta.seenTypes[path].Error, &j2gError.TypeExpansionError{
+					Path:      path,
+					Timestamp: ta.startTime.Unix(),
+				})
 			}
 			checkerState, err := checker.GetState()
 			if err != nil {
 				return err
 			}
-			(*ta.seenTypes[path].TypeAdjusterData).TypeAdjusterData = checkerState
-			(*ta.seenTypes[path].TypeAdjusterData).LastCheckedTimestamp = ta.startTime.Unix()
+			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = []json.RawMessage{checkerState}
+			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
 			runCheckersOnly = true
 		} else {
-			//TODO set error for type change
+			// TODO if u think that the error could be set here, yes, but the new type for the error is not yet determined
+			//TODO set error for type change -> This needs to steps, run all other checkers and see if one is
+			// applicable, if not the new type is the base type
 		}
 	}
 
@@ -253,7 +231,7 @@ func (ta *TypeAdjuster) AdjustTypesNew(path string) error {
 				ta.seenTypes[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
 			}
 			ta.seenTypes[path].TypeAdjusterData.NameOfActiveTypeAdjuster = &checkerName
-			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = checkerState
+			ta.seenTypes[path].TypeAdjusterData.TypeAdjusterData = []json.RawMessage{checkerState}
 			ta.seenTypes[path].TypeAdjusterData.ActiveType = &typeString
 			ta.seenTypes[path].TypeAdjusterData.SetTimestamp = ta.startTime.Unix()
 			ta.seenTypes[path].TypeAdjusterData.LastCheckedTimestamp = ta.startTime.Unix()
