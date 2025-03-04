@@ -110,13 +110,13 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 	})
 
 	var Level int
-	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
 		break
 	}
-	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
-		levelOfArrays := g.GetLevelOfArrays(fieldPath)
+	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
+		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fieldPath)
 
-		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].ActiveType != nil {
+		if g.fileData[fieldPath].TypeAdjusterData != nil && g.fileData[fieldPath].ActiveType != nil {
 			required = true
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
@@ -136,7 +136,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 							},
 							Index: &ast.BasicLit{
 								Kind:  token.STRING,
-								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+								Value: "\"" + g.fileData[fieldPath].JsonFieldName + "\"",
 							},
 						},
 					},
@@ -154,7 +154,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 					}(),
 				},
 			})
-		} else if !g.IsStruct(fieldPath) {
+		} else if !g.codeGenerator.IsStruct(fieldPath) {
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
 					Lhs: []ast.Expr{
@@ -173,7 +173,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 							},
 							Index: &ast.BasicLit{
 								Kind:  token.STRING,
-								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+								Value: "\"" + g.fileData[fieldPath].JsonFieldName + "\"",
 							},
 						},
 					},
@@ -252,7 +252,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 									},
 									&ast.BasicLit{
 										Kind:  token.STRING,
-										Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+										Value: "\"" + g.fileData[fieldPath].JsonFieldName + "\"",
 									},
 								},
 							},
@@ -260,7 +260,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 					},
 				},
 				Else: func() ast.Stmt {
-					if g.seenTypes[fieldPath].RequiredField {
+					if g.fileData[fieldPath].RequiredField {
 						return &ast.BlockStmt{
 							List: []ast.Stmt{
 								&ast.ExprStmt{
@@ -327,7 +327,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 							},
 							Index: &ast.BasicLit{
 								Kind:  token.STRING,
-								Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+								Value: "\"" + g.fileData[fieldPath].JsonFieldName + "\"",
 							},
 						},
 					},
@@ -562,7 +562,7 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 									},
 									&ast.BasicLit{
 										Kind:  token.STRING,
-										Value: "\"" + g.seenTypes[fieldPath].JsonFieldName + "\"",
+										Value: "\"" + g.fileData[fieldPath].JsonFieldName + "\"",
 									},
 								},
 							},
@@ -676,7 +676,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 								Name: "unmarshalledValue",
 							},
 						},
-						Type: g.GetFieldType(path, true),
+						Type: g.codeGenerator.GetFieldType(path, true),
 					},
 				},
 			},
@@ -810,7 +810,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 					},
 					&ast.BasicLit{
 						Kind:  token.STRING,
-						Value: "\"" + g.seenTypes[path].JsonFieldName + "\"",
+						Value: "\"" + g.fileData[path].JsonFieldName + "\"",
 					},
 				},
 			},
@@ -819,7 +819,7 @@ func (g *Generator) handleField(path string) []ast.Stmt {
 }
 
 func (g *Generator) handleArrayField(path string) []ast.Stmt {
-	levelOfArrays := g.GetLevelOfArrays(path)
+	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -831,7 +831,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 								Name: "result",
 							},
 						},
-						Type: g.GetFieldType(path, false),
+						Type: g.codeGenerator.GetFieldType(path, false),
 					},
 				},
 			},
@@ -893,7 +893,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 					},
 					&ast.BasicLit{
 						Kind:  token.STRING,
-						Value: "\"" + g.seenTypes[path].JsonFieldName + "\"",
+						Value: "\"" + g.fileData[path].JsonFieldName + "\"",
 					},
 				},
 			},
@@ -910,7 +910,7 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 								Name: "lt",
 							},
 						},
-						Type: g.GetFieldType(path, false),
+						Type: g.codeGenerator.GetFieldType(path, false),
 					},
 				},
 			},
@@ -968,6 +968,6 @@ func (g *Generator) handleArrayField(path string) []ast.Stmt {
 				},
 			},
 		},
-		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}, g.GetFieldType(path, true)),
+		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}, g.codeGenerator.GetFieldType(path, true)),
 	}
 }

@@ -1,10 +1,10 @@
 package fieldData
 
 type Metadata struct {
-	TotalSampleCount int                          `json:"totalSampleCount"`
-	LastRunTimestamp int64                        `json:"lastRunTimestamp"`
-	GeneratorData    []*GeneratorData             `json:"generatorData"`
-	Data             map[string]*TypeAdjusterData `json:"data"`
+	TotalSampleCount int              `json:"totalSampleCount"`
+	LastRunTimestamp int64            `json:"lastRunTimestamp"`
+	GeneratorData    []*GeneratorData `json:"generatorData"`
+	Data             FileData         `json:"fileData"`
 }
 
 type GeneratorData struct {
@@ -26,7 +26,6 @@ type PathData struct {
 	// ActiveType represents the goland code string of the currently active type
 	ActiveType *string `json:"activeType,omitempty"`
 
-	Omitempty        bool              `json:"omitempty,omitempty"`
 	TypeAdjusterData *TypeAdjusterData `json:"typeAdjusterData,omitempty"`
 	// Error Holds an error of type FieldPresenceChangeError, errors.IncompatibleCustomTypeError or errors.TypeChangeError.
 	// It's up to the caller, what to do with this. errors.IncompatibleCustomTypeError or TypeChangeError
@@ -61,4 +60,4 @@ type PathData struct {
 	ForceOmitempty *bool `json:"forceOmitempty,omitempty"`
 }
 
-//TODO we need to check if the new and old set of values result in the same type
+type FileData map[string]*PathData

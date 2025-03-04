@@ -1,4 +1,4 @@
-package codeGen
+package buildin
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
@@ -33,14 +35,14 @@ type DstFileData struct {
 }
 
 type DstGenerator struct {
-	seenTypes         map[string]*fieldData.PathData
+	fileData          fieldData.FileData
 	files             map[string]*DstFileData
 	stackedMarshaller map[string]*dst.File
 	basePath          *string
 	moduleName        *string
-	typeAdjusters     []typeAdjustment.TypeDeterminationFunction
+	typeAdjuster      *typeAdjustment.TypeAdjuster
 	outputPath        string
-	seenTypesUtils    *utils.SeenTypeUtils
+	*codeGenerators.Common
 	startTime         time.Time
 	globalFile        *dst.File
 	globalImportsFile *ast.File
@@ -49,22 +51,50 @@ type DstGenerator struct {
 	goVersion         *string
 	seenFilesCount    int
 	globalFileName    string
+	version           string
+	name              string
 }
 
-func NewDstCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster []typeAdjustment.TypeDeterminationFunction) (*DstGenerator, error) {
+func (s *DstGenerator) GetName() string {
+	return s.name
+}
+
+func (s *DstGenerator) GetVersion() string {
+	return s.version
+}
+
+func (s *DstGenerator) SetActiveTypeFile(fileData fieldData.FileData) {
+	s.fileData = fileData
+	s.Common.SetActiveTypeFile(fileData)
+	s.typeAdjuster.SetActiveTypeFile(fileData)
+}
+
+func pathBuilder(moduleName *string, basePath *string) (string, error) {
+	if moduleName != nil && basePath != nil {
+		return "", errors.New("cannot use both moduleName and basePath")
+	} else if moduleName != nil {
+		return *moduleName, nil
+	} else if basePath != nil {
+		return *basePath, nil
+	} else {
+		return "", errors.New("either packageName or basePath must be specified")
+	}
+}
+
+func NewDstCodeGenerator(fileData fieldData.FileData, outputPath string, clearPath bool, moduleName *string, basePath *string, adjuster typeAdjustment.TypeDeterminationFunctions) (*DstGenerator, error) {
 	internalBasePath, err := pathBuilder(moduleName, basePath)
 	if err != nil {
 		return nil, err
 	}
-	return &DstGenerator{
-		seenTypes:         inputFile,
+
+	s := &DstGenerator{
+		fileData:          fileData,
 		files:             make(map[string]*DstFileData),
 		stackedMarshaller: map[string]*dst.File{},
 		basePath:          &internalBasePath,
 		moduleName:        moduleName,
-		typeAdjusters:     adjuster,
 		outputPath:        outputPath,
-		seenTypesUtils:    utils.NewSeenTypeUtils(inputFile),
+		Common:            codeGenerators.NewCommon(fileData),
 		startTime:         time.Now(),
 		globalFile:        nil,
 		globalImportsFile: nil,
@@ -73,7 +103,12 @@ func NewDstCodeGenerator(inputFile map[string]*fieldData.PathData, outputPath st
 		goVersion:         utils.StringToPointer("1.23"),
 		seenFilesCount:    0,
 		globalFileName:    "Globals",
-	}, nil
+		version:           "",
+		name:              "",
+	}
+
+	s.typeAdjuster = typeAdjustment.NewTypeAdjuster(fileData, s, adjuster, s.startTime)
+	return s, nil
 }
 
 func (s *DstGenerator) addFileHeader(path string) {
@@ -82,9 +117,9 @@ func (s *DstGenerator) addFileHeader(path string) {
 	file.Decs.Start.Append("// Version: v0.0.1")
 	file.Decs.Start.Append("// CreationTime: " + s.startTime.String())
 	file.Decs.Start.Append("//")
-	file.Decs.Start.Append("// Used TypeAdjusters")
-	for _, adjuster := range s.typeAdjusters {
-		file.Decs.Start.Append("// Name: " + adjuster.GetName() + " Version: " + adjuster.GetVersion())
+	h := s.typeAdjuster.GetFileHeader()
+	for _, line := range h {
+		file.Decs.Start.Append(line)
 	}
 }
 
@@ -132,28 +167,28 @@ func (s *DstGenerator) Generate() error {
 			return err
 		}
 		file := s.files[path].file
-		if s.seenTypesUtils.IsStruct(path) {
+		if s.IsStruct(path) {
 			var fields []*dst.Field
 			var levelOfArrays int
-			for levelOfArrays, _ = range s.seenTypes[path].Types["field"] {
+			for levelOfArrays, _ = range s.fileData[path].Types["field"] {
 				break
 			}
-			if len(s.typeAdjusters) > 0 {
-				s.stackedMarshaller[path] = file
-			}
-			for fieldPath, _ := range s.seenTypes[path].Types["field"][levelOfArrays] {
-				//Adjust Types
-				ta := typeAdjustment.NewTypeAdjuster(s.seenTypes, s.typeAdjusters, s.startTime)
-				err := ta.AdjustTypesNew(fieldPath)
-				if err != nil {
-					return err
-				}
 
-				expr, err := s.seenTypesUtils.GetAdjustedFieldType(fieldPath)
+			/// TODO replace whit a function on the adjusterLogic, that accepts a path for type adjustment
+
+			for fieldPath, _ := range s.fileData[path].Types["field"][levelOfArrays] {
+				//Adjust Types
+				err := s.typeAdjuster.AdjustTypes(fieldPath)
 				if err != nil {
 					return err
 				}
-				if s.seenTypesUtils.IsStruct(fieldPath) {
+				s.stackedMarshaller[path] = file
+
+				expr, err := s.GetAdjustedFieldType(fieldPath)
+				if err != nil {
+					return err
+				}
+				if s.IsStruct(fieldPath) {
 					pathsToProcess = append(pathsToProcess, fieldPath)
 					AstUtils.AddMissingImports(s.files[path].importsFile, []string{*s.basePath + strings.ReplaceAll("/"+fieldPath, ".", "/")})
 				}
@@ -172,7 +207,7 @@ func (s *DstGenerator) Generate() error {
 							Start:  []string{"//" + fieldPath},
 						},
 					},
-					Tag: &dst.BasicLit{Kind: token.STRING, Value: s.seenTypesUtils.GetJsonTag(fieldPath)},
+					Tag: &dst.BasicLit{Kind: token.STRING, Value: s.GetJsonTag(fieldPath)},
 				}
 				fields = append(fields, field)
 			}
@@ -193,7 +228,7 @@ func (s *DstGenerator) Generate() error {
 				},
 			})
 		} else {
-			decorate, err := decorator.Decorate(nil, s.seenTypesUtils.GetFieldType(path, false))
+			decorate, err := decorator.Decorate(nil, s.GetFieldType(path, false))
 			if err != nil {
 				return err
 			}
@@ -230,7 +265,7 @@ func (s *DstGenerator) addJSONMarshaller() error {
 	for path, _ := range s.stackedMarshaller {
 		file := s.files[path].file
 		//fSet := s.files[path].fSet
-		uGen := unmarshaller.NewGenerator(s.seenTypes, s.globalImportPath)
+		uGen := unmarshaller.NewGenerator(s, s.fileData, s.globalImportPath)
 		uDecls, imports, err := uGen.Generate(path)
 		if err != nil {
 			return err
@@ -248,7 +283,7 @@ func (s *DstGenerator) addJSONMarshaller() error {
 			AstUtils.AddMissingImports(s.files[path].importsFile, imports)
 		}
 
-		mGen := marshaller.NewGenerator(s.seenTypes)
+		mGen := marshaller.NewGenerator(s.fileData, s)
 		mDecl, _, err := mGen.Generate(path)
 		if err != nil {
 			return err
@@ -289,7 +324,7 @@ func (s *DstGenerator) addJSONMarshaller() error {
 	}
 
 	if unMarshallGlobals {
-		uGen := unmarshaller.NewGenerator(s.seenTypes, s.globalImportPath)
+		uGen := unmarshaller.NewGenerator(s, s.fileData, s.globalImportPath)
 		uGGen, uGImports := uGen.GetGlobalFunctions()
 
 		for _, decl := range uGGen {
@@ -304,7 +339,7 @@ func (s *DstGenerator) addJSONMarshaller() error {
 	}
 
 	if marshallGlobals {
-		mGen := marshaller.NewGenerator(s.seenTypes)
+		mGen := marshaller.NewGenerator(s.fileData, s)
 		mGGen := mGen.GetGlobalFunctions()
 		for _, decl := range mGGen {
 			decorate, err := decorator.Decorate(nil, decl)
@@ -335,7 +370,7 @@ func (s *DstGenerator) generateGoMod() ([]byte, error) {
 	}
 
 	var requiresMap map[string]*fieldData.ModFileContent
-	for _, pathData := range s.seenTypes {
+	for _, pathData := range s.fileData {
 		if pathData.TypeAdjusterData != nil && pathData.TypeAdjusterData.ModFileContents != nil {
 			for _, modFileContent := range pathData.TypeAdjusterData.ModFileContents {
 				if !semver.IsValid(modFileContent.Version) {
@@ -370,21 +405,21 @@ func (s *DstGenerator) generateGoMod() ([]byte, error) {
 
 func (s *DstGenerator) addTypeConverterFunctions(path string, file *dst.File) error {
 	var elements map[string]*fieldData.ValueDetails
-	for level, _ := range s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)] {
-		elements = s.seenTypes[path].Types[s.seenTypesUtils.GetType(path)][level]
+	for level, _ := range s.fileData[path].Types[s.GetType(path)] {
+		elements = s.fileData[path].Types[s.GetType(path)][level]
 	}
 
 	for elementPath, _ := range elements {
-		if s.seenTypes[elementPath].TypeAdjusterData != nil && s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions != nil {
-			AstUtils.AddMissingImports(s.files[path].importsFile, s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.MarshallImports)
-			MarshallExprFile, err := decorator.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.Marshall, parser.AllErrors)
+		if s.fileData[elementPath].TypeAdjusterData != nil && s.fileData[elementPath].TypeAdjusterData.ParseFunctions != nil {
+			AstUtils.AddMissingImports(s.files[path].importsFile, s.fileData[elementPath].TypeAdjusterData.ParseFunctions.MarshallImports)
+			MarshallExprFile, err := decorator.ParseFile(token.NewFileSet(), "", "package main \n"+s.fileData[elementPath].TypeAdjusterData.ParseFunctions.Marshall, parser.AllErrors)
 			if err != nil {
 				return err
 			}
 			file.Decls = append(file.Decls, MarshallExprFile.Decls[0])
 
-			AstUtils.AddMissingImports(s.files[path].importsFile, s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.UnmarshallImports)
-			UnMarshallExprFile, err := decorator.ParseFile(token.NewFileSet(), "", "package main \n"+s.seenTypes[elementPath].TypeAdjusterData.ParseFunctions.Unmarshall, parser.AllErrors)
+			AstUtils.AddMissingImports(s.files[path].importsFile, s.fileData[elementPath].TypeAdjusterData.ParseFunctions.UnmarshallImports)
+			UnMarshallExprFile, err := decorator.ParseFile(token.NewFileSet(), "", "package main \n"+s.fileData[elementPath].TypeAdjusterData.ParseFunctions.Unmarshall, parser.AllErrors)
 			if err != nil {
 				return err
 			}
@@ -395,7 +430,7 @@ func (s *DstGenerator) addTypeConverterFunctions(path string, file *dst.File) er
 }
 
 func (s *DstGenerator) getStartPath() (string, error) {
-	for path, _ := range s.seenTypes {
+	for path, _ := range s.fileData {
 		pathElements := strings.Split(path, ".")
 		if len(pathElements) == 1 {
 			return pathElements[0], nil
@@ -461,5 +496,24 @@ func (s *DstGenerator) writeFiles() error {
 		}
 	}
 
+	return nil
+}
+
+func (s *DstGenerator) CheckType(path string) error {
+	pathData := s.fileData[path]
+	if pathData.TypeAdjusterData != nil && pathData.TypeAdjusterData.NameOfActiveTypeAdjuster != nil {
+		return s.typeAdjuster.CheckActiveChecker(path, true)
+	} else if pathData.ActiveType != nil {
+		typeString, err := utils.ExprToString(s.GetFieldType(path, true))
+		if err != nil {
+			return err
+		}
+		if *pathData.ActiveType != typeString {
+			return &j2gErrors.TypeChangeError{
+				OldType: *pathData.ActiveType,
+				NewType: typeString,
+			}
+		}
+	}
 	return nil
 }

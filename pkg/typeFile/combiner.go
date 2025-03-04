@@ -2,15 +2,20 @@ package typeFile
 
 import (
 	"errors"
+	timestampError "github.com/Lemonn/JSON2Go/internal/error"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"time"
 )
 
 type Combiner struct {
-	startTime   time.Time
-	fileDetails []*FileDetails
+	startTime         time.Time
+	fileDetails       []*FileDetails
+	codeGenerator     codeGenerators.CodeGenerator
+	laterCheck        []string
+	combinedSeenTypes map[string]*fieldData.PathData
 }
 
 type FileDetails struct {
@@ -31,11 +36,19 @@ func (c *Combiner) InterfaceReplacement(p, p1 *fieldData.PathData) bool {
 	return false
 }
 
-func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.PathData, error) {
-	if p.FirstSeenTimestamp > p1.FirstSeenTimestamp {
-		//TODO sort
+func (c *Combiner) processStackedTypeChecks() error {
+	c.codeGenerator.SetActiveTypeFile(c.combinedSeenTypes)
+	for _, path := range c.laterCheck {
+		err := c.codeGenerator.CheckType(path)
+		err = c.appendFileErrorsToTypeFile(err, path)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
+func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.PathData, error) {
 	newP := fieldData.PathData{Types: make(map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails)}
 
 	//Combine Types
@@ -72,43 +85,43 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 					newP.Types[t][level][value].Combine(valueDetail)
 				}
 			}
-
 		}
 	}
 
 	// Only care about type changes, if the type is active.
 	if p.Active || p1.Active {
+		// Combine the TypeAdjusterData
+		var combine *fieldData.TypeAdjusterData
+		var err error
+		if p.TypeAdjusterData != nil {
+			combine, err = p.TypeAdjusterData.Combine(p1.TypeAdjusterData)
+
+		} else if p1.TypeAdjusterData != nil {
+			combine, err = p1.TypeAdjusterData.Combine(p.TypeAdjusterData)
+		}
+
+		if combine != nil || err != nil {
+			hardError := c.appendFileErrorsToTypeFile(err, path)
+			if hardError != nil {
+				return nil, hardError
+			}
+			newP.TypeAdjusterData = combine
+			if err == nil {
+				c.laterCheck = append(c.laterCheck, path)
+			}
+		}
+
+		// Combine the ActiveType
 		if p.ActiveType == nil {
 			newP.ActiveType = p1.ActiveType
 		} else if p1.ActiveType == nil {
 			newP.ActiveType = p.ActiveType
 		} else if p.ActiveType == p1.ActiveType {
 			newP.ActiveType = p.ActiveType
-		} else {
-
-			//TODO we need to run the TypeChecker on the new file as well, if one is active at the old field
-
-			if p.TypeAdjusterData != nil && p.TypeAdjusterData.NameOfActiveTypeAdjuster != nil &&
-				p1.TypeAdjusterData == nil || (p1.TypeAdjusterData != nil && p1.TypeAdjusterData.NameOfActiveTypeAdjuster == nil) {
-				//TODO run checker on p and see if it matches the type of p1
-			} else if p1.TypeAdjusterData != nil && p1.TypeAdjusterData.NameOfActiveTypeAdjuster != nil &&
-				p.TypeAdjusterData == nil || (p.TypeAdjusterData != nil && p.TypeAdjusterData.NameOfActiveTypeAdjuster == nil) {
-				//TODO run checker on p1 and see if it matches the type of p
-			} else if p1.TypeAdjusterData == nil || p1.TypeAdjusterData != nil && p1.TypeAdjusterData.NameOfActiveTypeAdjuster == nil {
-				//TODO reset all active checker status and types and set to default type based on the values
-				// Or set no type at all, as this can be done by the generator
-			}
-
+		} else if !(p.TypeAdjusterData != nil && p.TypeAdjusterData.NameOfActiveTypeAdjuster != nil ||
+			p1.TypeAdjusterData != nil && p1.TypeAdjusterData.NameOfActiveTypeAdjuster != nil) {
+			//TODO we need to set an type change error
 			newP.ActiveType = nil
-			newP.Error = errors.Join(newP.Error, &j2gErrors.TypeChangeError{
-				Timestamp:                0,
-				OldType:                  *p.ActiveType,
-				NewType:                  *p1.ActiveType,
-				InterfaceTypeReplacement: false,
-
-				WasCustomType: false,
-				IsCustomType:  false,
-			})
 		}
 	} else {
 		newP.ActiveType = nil
@@ -124,19 +137,6 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 		}
 	} else {
 		newP.JsonFieldName = p.JsonFieldName
-	}
-
-	//Combine TypeAdjusterData
-	if p.TypeAdjusterData != nil && p1.TypeAdjusterData == nil {
-		newP.TypeAdjusterData = p.TypeAdjusterData
-	} else if p.TypeAdjusterData == nil && p1.TypeAdjusterData != nil {
-		newP.TypeAdjusterData = p1.TypeAdjusterData
-	} else if p.TypeAdjusterData != nil && p1.TypeAdjusterData != nil {
-		combine, err := p.TypeAdjusterData.Combine(p1.TypeAdjusterData)
-		if err != nil {
-			return nil, err
-		}
-		newP.TypeAdjusterData = combine
 	}
 
 	//Combine Error
@@ -214,4 +214,23 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 	//TODO combine user settings
 
 	return &newP, nil
+}
+
+func (c *Combiner) appendFileErrorsToTypeFile(err error, path string) error {
+	if err == nil {
+		return nil
+	}
+	ea := utils.GetAllWrappedErrors(err)
+	for _, ue := range ea {
+		if _, ok := ue.(timestampError.FileError); !ok {
+			return ue
+		}
+		if v, ok := ue.(timestampError.TimestampInterface); ok {
+			v.SetTimestamp(c.startTime)
+		}
+	}
+	for _, ue := range ea {
+		c.combinedSeenTypes[path].Error = errors.Join(c.combinedSeenTypes[path].Error, ue)
+	}
+	return nil
 }

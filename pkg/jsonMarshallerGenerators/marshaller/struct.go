@@ -12,14 +12,14 @@ import (
 func (g *Generator) generateShadowStruct(path string) *ast.DeclStmt {
 	var localFields []*ast.Field
 	var Level int
-	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
 		break
 	}
-	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
+	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
 		localFields = append(localFields, &ast.Field{
 			Names: []*ast.Ident{{Name: utils.GetFieldName(fieldPath)}},
-			Type:  g.seenTypesUtils.GetFieldType(fieldPath, false),
-			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.seenTypes[fieldPath].JsonFieldName)},
+			Type:  g.codeGenerator.GetFieldType(fieldPath, false),
+			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.fileData[fieldPath].JsonFieldName)},
 		})
 	}
 
@@ -69,12 +69,12 @@ func (g *Generator) structGenerator(path string) ([]ast.Stmt, []string, error) {
 	stmts = append(stmts, utils.GenerateTypeWhitInitializedArrays(localStruct.Decl.(*ast.GenDecl).Specs[0].(*ast.TypeSpec).Type.(*ast.StructType)))
 
 	var Level int
-	for Level, _ = range g.seenTypes[path].Types[fieldData.Field] {
+	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
 		break
 	}
-	for fieldPath, _ := range g.seenTypes[path].Types[fieldData.Field][Level] {
-		levelOfArrays := g.seenTypesUtils.GetLevelOfArrays(fieldPath)
-		if g.seenTypes[fieldPath].TypeAdjusterData != nil && g.seenTypes[fieldPath].TypeAdjusterData.ActiveType != nil && !g.seenTypesUtils.IsStruct(fieldPath) {
+	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
+		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fieldPath)
+		if g.fileData[fieldPath].TypeAdjusterData != nil && g.fileData[fieldPath].ActiveType != nil && !g.codeGenerator.IsStruct(fieldPath) {
 			required = true
 			if levelOfArrays > 0 {
 				g.handleArrayField(&stmts, fieldPath)
@@ -199,7 +199,7 @@ func (g *Generator) handleField(stmts *[]ast.Stmt, path string) {
 func (g *Generator) handleArrayField(stmts *[]ast.Stmt, path string) {
 	var fieldNameExpr ast.Expr
 	var structFieldNameIndexExpr ast.Expr
-	levelOfArrays := g.seenTypesUtils.GetLevelOfArrays(path)
+	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
 
 	fieldNameExpr = &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}
 	structFieldNameIndexExpr = &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetParentFieldName(path))[0]))}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}
@@ -215,7 +215,7 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, path string) {
 								Name: "result",
 							},
 						},
-						Type: g.seenTypesUtils.GetFieldType(path, false),
+						Type: g.codeGenerator.GetFieldType(path, false),
 					},
 				},
 			},
@@ -270,6 +270,6 @@ func (g *Generator) handleArrayField(stmts *[]ast.Stmt, path string) {
 		},
 		utils.GenerateAppendStatement(levelOfArrays-1, 0, fieldNameExpr, &ast.Ident{Name: "result"}, "index"),
 	}
-	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, g.seenTypesUtils.GetFieldType(path, false)))
+	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, g.codeGenerator.GetFieldType(path, false)))
 	return
 }

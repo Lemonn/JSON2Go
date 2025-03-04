@@ -399,3 +399,27 @@ func GetPackageNameFromImportPath(importPath string) string {
 	pathElements := strings.Split(importPath, "/")
 	return pathElements[len(pathElements)-1]
 }
+
+func GetAllWrappedErrors(e error) []error {
+	var result []error
+UNWRAP:
+	switch err := e.(type) {
+	case interface {
+		Unwrap() []error
+	}:
+		result = append(result, err.(error))
+		if len(err.Unwrap()) > 0 {
+			e = err.Unwrap()[0]
+			goto UNWRAP
+		} else {
+			return result
+		}
+	default:
+		if len(result) > 0 {
+			return result
+		} else {
+			result = append(result, e)
+			return result
+		}
+	}
+}

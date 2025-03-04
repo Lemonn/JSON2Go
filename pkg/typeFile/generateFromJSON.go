@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"reflect"
 	"strconv"
 	"time"
 )
@@ -56,7 +55,6 @@ func (p *Parser) externalizeAnonymousArray(structName string) {
 			p.seenTypes[structName] = &fieldData.PathData{
 				Types:                   map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
 				JsonFieldName:           "",
-				Omitempty:               false,
 				TypeAdjusterData:        nil,
 				Error:                   nil,
 				RequiredField:           false,
@@ -130,7 +128,6 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 	var err error
 	depth++
 	for _, i := range sliceData {
-		fmt.Println(reflect.TypeOf(i))
 		switch v := i.(type) {
 		case []interface{}:
 			err = p.processSlice(v, path, depth)
@@ -181,7 +178,6 @@ func (p *Parser) processField(field interface{}, path string, depth int) error {
 	default:
 		return errors.New(fmt.Sprintf("unsupported type of field data: %T", field))
 	}
-	fmt.Println(reflect.TypeOf(field))
 	Type, err := fieldData.TypeFromAny(field)
 	if err != nil {
 		return err

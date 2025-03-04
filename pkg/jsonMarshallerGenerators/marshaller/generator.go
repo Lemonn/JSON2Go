@@ -2,20 +2,21 @@ package marshaller
 
 import (
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"unicode"
 )
 
 type Generator struct {
-	seenTypes      map[string]*fieldData.PathData
-	seenTypesUtils *utils.SeenTypeUtils
+	fileData      fieldData.FileData
+	codeGenerator codeGenerators.CodeGenerator
 }
 
-func NewGenerator(seenTypes map[string]*fieldData.PathData) *Generator {
+func NewGenerator(fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) *Generator {
 	return &Generator{
-		seenTypes:      seenTypes,
-		seenTypesUtils: utils.NewSeenTypeUtils(seenTypes),
+		fileData:      fileData,
+		codeGenerator: codeGenerator,
 	}
 }
 
@@ -30,11 +31,11 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 	var imports []string
 	var stmts []ast.Stmt
 
-	if g.seenTypes[path].ForceSourceType != nil {
-		if !g.seenTypes[path].DirectToForceSourceType {
+	if g.fileData[path].ForceSourceType != nil {
+		if !g.fileData[path].DirectToForceSourceType {
 			//TODO struct that is replaces as a whole. This case is not yet implemented
 		}
-	} else if g.seenTypesUtils.IsStruct(path) {
+	} else if g.codeGenerator.IsStruct(path) {
 		stmts, imports, err = g.structGenerator(path)
 		if err != nil {
 			return nil, nil, err

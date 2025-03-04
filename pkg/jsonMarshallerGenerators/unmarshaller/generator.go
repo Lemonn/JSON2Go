@@ -2,23 +2,24 @@ package unmarshaller
 
 import (
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"unicode"
 )
 
 type Generator struct {
-	seenTypes      map[string]*fieldData.PathData
-	added          bool
-	structPrefixes map[string]string
-	*utils.SeenTypeUtils
+	codeGenerator     codeGenerators.CodeGenerator
+	fileData          fieldData.FileData
+	added             bool
+	structPrefixes    map[string]string
 	globalsImportPath string
 }
 
-func NewGenerator(seenTypes map[string]*fieldData.PathData, globalImportsPath string) *Generator {
+func NewGenerator(codeGenerator codeGenerators.CodeGenerator, fileData fieldData.FileData, globalImportsPath string) *Generator {
 	return &Generator{
-		seenTypes:         seenTypes,
-		SeenTypeUtils:     utils.NewSeenTypeUtils(seenTypes),
+		codeGenerator:     codeGenerator,
+		fileData:          fileData,
 		globalsImportPath: globalImportsPath,
 	}
 }
@@ -43,9 +44,9 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 	var imports []string
 	var stmts []ast.Stmt
 
-	if g.IsStruct(path) && g.seenTypes[path].TypeAdjusterData != nil && g.seenTypes[path].TypeAdjusterData.ActiveType != nil {
+	if g.codeGenerator.IsStruct(path) && g.fileData[path].TypeAdjusterData != nil && g.fileData[path].ActiveType != nil {
 		//TODO struct that is replaces as a whole. This case is not yet implemented
-	} else if g.IsStruct(path) {
+	} else if g.codeGenerator.IsStruct(path) {
 		stmts, imports, err = g.structGenerator(path)
 		if err != nil {
 			return nil, nil, err

@@ -10,7 +10,7 @@ import (
 // Handles the case where we have an array of non struct type
 func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 	var stmts []ast.Stmt
-	levelOfArrays := g.GetLevelOfArrays(path)
+	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
 	//Content of the nested range statement
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
@@ -23,7 +23,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 								Name: "result",
 							},
 						},
-						Type: g.GetFieldType(path, true),
+						Type: g.codeGenerator.GetFieldType(path, true),
 					},
 				},
 			},
@@ -87,7 +87,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 						},
 					},
 					//TODO replace whit original type
-					Type: utils.GeneratedNestedArray(levelOfArrays, g.GetFieldType(path, true)),
+					Type: utils.GeneratedNestedArray(levelOfArrays, g.codeGenerator.GetFieldType(path, true)),
 				},
 			},
 		},
@@ -162,7 +162,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 			},
 		},
 	})
-	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0]))}}, g.GetFieldType(path, true)))
+	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0]))}}, g.codeGenerator.GetFieldType(path, true)))
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.Ident{

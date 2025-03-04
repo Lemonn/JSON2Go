@@ -2,6 +2,9 @@ package typeAdjustment
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 )
@@ -12,13 +15,13 @@ type TypeDeterminationFunction interface {
 	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GetName() string
-	SetState(states []json.RawMessage, currentPath string, activeTypeCheckers []TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error
+	SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
 	GetExtraCode() ([]ast.Decl, []string)
 	TypeExpansion() bool
 	ForceSourceType() *string
 	GetModFileContents() []*fieldData.ModFileContent
-	GetVersion() string
+	GetVersion() *string
 }
 
 type State int
@@ -28,3 +31,34 @@ const (
 	StateUndecided
 	StateApplicable
 )
+
+type TypeDeterminationFunctions []TypeDeterminationFunction
+
+func (t TypeDeterminationFunctions) GetByName(name string) (TypeDeterminationFunction, error) {
+	for _, typeDeterminationFunction := range t {
+		if typeDeterminationFunction.GetName() == name {
+			return typeDeterminationFunction, nil
+		}
+	}
+	return nil, errors.New("type adjustment function not found")
+}
+
+func (t TypeDeterminationFunctions) GetNames() []string {
+	var names []string
+	for _, checker := range t {
+		names = append(names, checker.GetName())
+	}
+	return names
+}
+
+func (t TypeDeterminationFunctions) GenerateHeader() []string {
+	if len(t) == 0 {
+		return []string{}
+	}
+	var s []string
+	s = append(s, "// Used TypeAdjusters")
+	for _, adjuster := range t {
+		s = append(s, fmt.Sprintf("// Name: %s Version: %s", adjuster.GetName(), adjuster.GetVersion()))
+	}
+	return s
+}

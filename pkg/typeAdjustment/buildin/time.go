@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	j2gErrors "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
@@ -17,16 +18,17 @@ type TimeTypeChecker struct {
 	// integers not years!
 	ignoreYearOnlyStrings bool
 	state                 *timeTypeCheckerState
-	utils                 *utils.SeenTypeUtils
-	seenTypes             map[string]*fieldData.PathData
+	fileData              fieldData.FileData
+	codeGenerator         codeGenerators.CodeGenerator
+	version               string
 }
 
 func (t *TimeTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
 	return nil
 }
 
-func (t *TimeTypeChecker) GetVersion() string {
-	return "v0.0.1"
+func (t *TimeTypeChecker) GetVersion() *string {
+	return &t.version
 }
 
 func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
@@ -38,21 +40,22 @@ func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
 func (t *TimeTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
 	var Level int
 	var err error
+	pathData := t.fileData[path]
 	//TODO check if its struct type and ignore
-	if len(t.seenTypes[path].Types) > 1 {
+	if len(pathData.Types) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	Type := t.utils.GetType(path)
-	if len(t.seenTypes[path].Types[Type]) > 1 {
+	Type := t.codeGenerator.GetType(path)
+	if len(pathData.Types[Type]) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	for Level = range t.seenTypes[path].Types[Type] {
+	for Level = range pathData.Types[Type] {
 		break
 	}
 
 	layoutStrings := make(map[string]struct{})
 	var newLayoutString string
-	for value := range t.seenTypes[path].Types[Type][Level] {
+	for value := range pathData.Types[Type][Level] {
 		newLayoutString, err = dateparse.ParseFormat(value)
 		if err != nil {
 			return typeAdjustment.StateFailed, nil
@@ -171,9 +174,9 @@ func (t *timeTypeCheckerState) combiner(t1 *timeTypeCheckerState) (*timeTypeChec
 	return &tNew, nil
 }
 
-func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string, activeTypeCheckers []typeAdjustment.TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error {
-	t.seenTypes = seenTypes
-	t.utils = utils.NewSeenTypeUtils(seenTypes)
+func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+	t.fileData = fileData
+	t.codeGenerator = codeGenerator
 	if states == nil || len(states) == 0 {
 		t.state = &timeTypeCheckerState{
 			LayoutString: nil,
