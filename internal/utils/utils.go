@@ -390,6 +390,15 @@ func GetFieldName(path string) string {
 	return pathElements[len(pathElements)-1]
 }
 
+func GetParentPath(path string) string {
+	pathElements := strings.Split(path, ".")
+	if len(pathElements) > 1 {
+		return strings.Join(pathElements[:len(pathElements)-1], ".")
+	} else {
+		return path
+	}
+}
+
 func GetParentFieldName(path string) string {
 	pathElements := strings.Split(path, ".")
 	return pathElements[len(pathElements)-2]

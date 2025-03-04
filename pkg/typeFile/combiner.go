@@ -7,40 +7,44 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
+	"maps"
+	"sort"
 	"time"
 )
 
 type Combiner struct {
-	startTime         time.Time
-	fileDetails       []*FileDetails
-	codeGenerator     codeGenerators.CodeGenerator
-	laterCheck        []string
-	combinedSeenTypes map[string]*fieldData.PathData
+	startTime     time.Time
+	codeGenerator codeGenerators.CodeGenerator
 }
 
-type FileDetails struct {
-	creationDate  time.Time
-	seenTypes     map[string]*fieldData.PathData
-	seenTypeUtils *utils.SeenTypeUtils
+type FileDetail struct {
+	CreationDate time.Time
+	FileData     fieldData.FileData
 }
 
-func (c *Combiner) getOldDetails() *FileDetails {
-	return nil
+type FileDetails []*FileDetail
+
+func (f FileDetails) Len() int {
+	return len(f)
 }
 
-func (c *Combiner) getNewDetails() *FileDetails {
-	return nil
+func (f FileDetails) Less(i, j int) bool {
+	return f[i].CreationDate.Before(f[j].CreationDate)
+}
+
+func (f FileDetails) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
 }
 
 func (c *Combiner) InterfaceReplacement(p, p1 *fieldData.PathData) bool {
 	return false
 }
 
-func (c *Combiner) processStackedTypeChecks() error {
-	c.codeGenerator.SetActiveTypeFile(c.combinedSeenTypes)
-	for _, path := range c.laterCheck {
+func (c *Combiner) processStackedTypeChecks(stackedTypeChecks map[string]struct{}, fileData fieldData.FileData) error {
+	c.codeGenerator.SetActiveTypeFile(fileData)
+	for path := range stackedTypeChecks {
 		err := c.codeGenerator.CheckType(path)
-		err = c.appendFileErrorsToTypeFile(err, path)
+		err = c.appendFileErrorsToTypeFile(err, fileData[path])
 		if err != nil {
 			return err
 		}
@@ -48,7 +52,69 @@ func (c *Combiner) processStackedTypeChecks() error {
 	return nil
 }
 
-func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.PathData, error) {
+func NewCombiner(codeGenerator codeGenerators.CodeGenerator, startTime time.Time) *Combiner {
+	return &Combiner{
+		startTime:     startTime,
+		codeGenerator: codeGenerator,
+	}
+}
+
+func (c *Combiner) CombineFileDetails(fileDetails FileDetails) (fieldData.FileData, error) {
+	sort.Sort(fileDetails)
+	stackedTypeChecks := make(map[string]struct{})
+	for {
+		if len(fileDetails) == 1 {
+			break
+		}
+		paths := make(map[string][]*fieldData.PathData)
+		combined := make(fieldData.FileData)
+		for path, data := range fileDetails[0].FileData {
+			if _, ok := paths[path]; !ok {
+				paths[path] = []*fieldData.PathData{}
+			}
+			paths[path] = append(paths[path], data)
+		}
+
+		for path, data := range fileDetails[1].FileData {
+			if _, ok := paths[path]; !ok {
+				paths[path] = []*fieldData.PathData{}
+			}
+			paths[path] = append(paths[path], data)
+		}
+
+		for path, data := range paths {
+			if len(data) == 1 {
+				combined[path] = data[0]
+			} else {
+				var oldParentSeenCounter int
+				if v, ok := fileDetails[0].FileData[utils.GetParentPath(path)]; ok {
+					oldParentSeenCounter = v.SeenCounter
+				}
+				combinedPathData, st, err := c.combinePathData(data[0], data[1], path, oldParentSeenCounter)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(stackedTypeChecks, st)
+				combined[path] = combinedPathData
+			}
+		}
+		creationDate := fileDetails[1].CreationDate
+		fileDetails = fileDetails[2:]
+		fileDetails = append(fileDetails, &FileDetail{
+			CreationDate: creationDate,
+			FileData:     combined,
+		})
+	}
+	err := c.processStackedTypeChecks(stackedTypeChecks, fileDetails[0].FileData)
+	if err != nil {
+		return nil, err
+	}
+	return fileDetails[0].FileData, nil
+}
+
+// TODO only return on hard errors, write all soft errors to the file
+func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldParentSeenCounter int) (*fieldData.PathData, map[string]struct{}, error) {
+	stackedTypeChecks := make(map[string]struct{})
 	newP := fieldData.PathData{Types: make(map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails)}
 
 	//Combine Types
@@ -101,13 +167,14 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 		}
 
 		if combine != nil || err != nil {
-			hardError := c.appendFileErrorsToTypeFile(err, path)
+			hardError := c.appendFileErrorsToTypeFile(err, &newP)
 			if hardError != nil {
-				return nil, hardError
+				return nil, nil, hardError
 			}
 			newP.TypeAdjusterData = combine
 			if err == nil {
-				c.laterCheck = append(c.laterCheck, path)
+				stackedTypeChecks[path] = struct{}{}
+				//c.laterCheck = append(c.laterCheck, path)
 			}
 		}
 
@@ -130,7 +197,7 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 	//Combine JsonFieldName
 	if p.JsonFieldName != p1.JsonFieldName {
 		// TODO respect the conflict handler
-		return nil, &j2gErrors.ConflictingJsonFieldNameError{
+		return nil, nil, &j2gErrors.ConflictingJsonFieldNameError{
 			Timestamp:    c.startTime.Unix(),
 			OldFieldName: p.JsonFieldName,
 			NewFieldName: p1.JsonFieldName,
@@ -155,7 +222,7 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 	} else if p.ForceSourceType != nil && p1.ForceSourceType != nil {
 		//TODO respect conflict resolving strategic
 		if *p1.ForceSourceType != *p.ForceSourceType {
-			return nil, &j2gErrors.ConflictingForceSourceTypeError{}
+			return nil, nil, &j2gErrors.ConflictingForceSourceTypeError{}
 		} else {
 			newP.ForceSourceType = p.ForceSourceType
 		}
@@ -163,7 +230,7 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 
 	if p.DirectToForceSourceType != p1.DirectToForceSourceType {
 		//TODO respect conflict resolving strategic
-		return nil, &j2gErrors.ConflictingForceSourceTypeError{}
+		return nil, nil, &j2gErrors.ConflictingForceSourceTypeError{}
 	} else {
 		newP.DirectToForceSourceType = p.DirectToForceSourceType
 	}
@@ -180,13 +247,7 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 		newP.IntroductionCount = p.IntroductionCount
 		newP.SeenCounter = p.SeenCounter
 	} else if p1.IntroductionCount == 0 && p1.SeenCounter == 0 {
-		oldDetails := c.getOldDetails()
-		var seenCounterOffset int
-		//Check if old file contains the parent type, if so add the value as offset.
-		if _, ok := oldDetails.seenTypes[oldDetails.seenTypeUtils.GetParentPath(path)]; ok {
-			seenCounterOffset = oldDetails.seenTypes[oldDetails.seenTypeUtils.GetParentPath(path)].SeenCounter
-		}
-		newP.SeenCounter = p1.SeenCounter + seenCounterOffset
+		newP.SeenCounter = p1.SeenCounter + oldParentSeenCounter
 	} else {
 		newP.IntroductionCount = p.IntroductionCount + p1.IntroductionCount
 		newP.SeenCounter = p.SeenCounter + p1.SeenCounter
@@ -213,10 +274,10 @@ func (c *Combiner) Combine(p, p1 *fieldData.PathData, path string) (*fieldData.P
 
 	//TODO combine user settings
 
-	return &newP, nil
+	return &newP, stackedTypeChecks, nil
 }
 
-func (c *Combiner) appendFileErrorsToTypeFile(err error, path string) error {
+func (c *Combiner) appendFileErrorsToTypeFile(err error, pathData *fieldData.PathData) error {
 	if err == nil {
 		return nil
 	}
@@ -230,7 +291,7 @@ func (c *Combiner) appendFileErrorsToTypeFile(err error, path string) error {
 		}
 	}
 	for _, ue := range ea {
-		c.combinedSeenTypes[path].Error = errors.Join(c.combinedSeenTypes[path].Error, ue)
+		pathData.Error = errors.Join(pathData.Error, ue)
 	}
 	return nil
 }
