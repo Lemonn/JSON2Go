@@ -2,6 +2,7 @@ package typeFile
 
 import (
 	"errors"
+	"fmt"
 	timestampError "github.com/Lemonn/JSON2Go/internal/error"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
@@ -130,7 +131,7 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 				if _, ok := newP.Types[t][level][value]; !ok {
 					newP.Types[t][level][value] = valueDetail
 				} else {
-					newP.Types[t][level][value].Combine(valueDetail)
+					newP.Types[t][level][value] = newP.Types[t][level][value].Combine(valueDetail)
 				}
 			}
 
@@ -148,7 +149,7 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 				if _, ok := newP.Types[t][level][value]; !ok {
 					newP.Types[t][level][value] = valueDetail
 				} else {
-					newP.Types[t][level][value].Combine(valueDetail)
+					newP.Types[t][level][value] = newP.Types[t][level][value].Combine(valueDetail)
 				}
 			}
 		}
@@ -246,10 +247,13 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 	if p1.IntroductionCount == 0 && p1.SeenCounter == 0 {
 		newP.IntroductionCount = p.IntroductionCount
 		newP.SeenCounter = p.SeenCounter
-	} else if p1.IntroductionCount == 0 && p1.SeenCounter == 0 {
-		newP.SeenCounter = p1.SeenCounter + oldParentSeenCounter
+	} else if p.IntroductionCount == 0 && p.SeenCounter == 0 {
+		newP.IntroductionCount = p1.IntroductionCount + oldParentSeenCounter
+		newP.SeenCounter = p1.SeenCounter
 	} else {
 		newP.IntroductionCount = p.IntroductionCount + p1.IntroductionCount
+		fmt.Println(p.IntroductionCount, p1.IntroductionCount)
+		fmt.Println(path)
 		newP.SeenCounter = p.SeenCounter + p1.SeenCounter
 	}
 
