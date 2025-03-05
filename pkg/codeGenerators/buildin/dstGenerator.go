@@ -7,7 +7,7 @@ import (
 	"github.com/Lemonn/AstUtils"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors/combiner"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/marshaller"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/unmarshaller"
@@ -167,14 +167,13 @@ func (s *DstGenerator) Generate() error {
 			return err
 		}
 		file := s.files[path].file
+		s.fileData[path].Active = true
 		if s.IsStruct(path) {
 			var fields []*dst.Field
 			var levelOfArrays int
 			for levelOfArrays, _ = range s.fileData[path].Types["field"] {
 				break
 			}
-
-			/// TODO replace whit a function on the adjusterLogic, that accepts a path for type adjustment
 
 			for fieldPath, _ := range s.fileData[path].Types["field"][levelOfArrays] {
 				//Adjust Types
@@ -192,7 +191,7 @@ func (s *DstGenerator) Generate() error {
 					pathsToProcess = append(pathsToProcess, fieldPath)
 					AstUtils.AddMissingImports(s.files[path].importsFile, []string{*s.basePath + strings.ReplaceAll("/"+fieldPath, ".", "/")})
 				}
-
+				s.fileData[fieldPath].Active = true
 				pathElements := strings.Split(fieldPath, ".")
 				decorate, err := decorator.Decorate(nil, expr)
 				if err != nil {
@@ -424,6 +423,15 @@ func (s *DstGenerator) addTypeConverterFunctions(path string, file *dst.File) er
 				return err
 			}
 			file.Decls = append(file.Decls, UnMarshallExprFile.Decls[0])
+
+			MarshallExtraCodeFile, err := decorator.ParseFile(token.NewFileSet(), "", "package main \n"+s.fileData[elementPath].TypeAdjusterData.ParseFunctions.ExtraCode, parser.AllErrors)
+			if err != nil {
+				return err
+			}
+			for _, decl := range MarshallExtraCodeFile.Decls {
+				file.Decls = append(file.Decls, decl)
+			}
+
 		}
 	}
 	return nil

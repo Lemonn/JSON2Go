@@ -87,6 +87,8 @@ type ParseFunctions struct {
 	// ToTypeParseFunction Holds the function name, which converts from custom to json type
 	Marshall        string   `json:"marshall,omitempty"`
 	MarshallImports []string `json:"marshallImports,omitempty"`
+	ExtraCode       string   `json:"extraCode,omitempty"`
+	ExtraImports    []string `json:"extraImports,omitempty"`
 }
 
 type ModFileContent struct {

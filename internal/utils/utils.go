@@ -1,14 +1,14 @@
 package utils
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/iancoleman/strcase"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
-	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -328,6 +328,7 @@ func GetEmptyFile(packageName string) *ast.File {
 	return file
 }
 
+// TODO this function needs to handle more possible edge cases
 func JsonNameToGoName(str string) string {
 	if unicode.IsNumber(rune(str[0])) {
 		str = "number_" + str
@@ -341,6 +342,7 @@ func JsonNameToGoName(str string) string {
 	}
 }
 
+/*
 func GetFieldType(seenTypes map[string]*fieldData.PathData, path string) (expr ast.Expr, structType bool) {
 	levelOfArrays := math.MaxInt32
 	//TODO error on path not found
@@ -385,6 +387,8 @@ func GetFieldType(seenTypes map[string]*fieldData.PathData, path string) (expr a
 	return expr, structType
 }
 
+*/
+
 func GetFieldName(path string) string {
 	pathElements := strings.Split(path, ".")
 	return pathElements[len(pathElements)-1]
@@ -410,13 +414,20 @@ func GetPackageNameFromImportPath(importPath string) string {
 }
 
 func GetAllWrappedErrors(e error) []error {
+	if e == nil {
+		return nil
+	}
+
 	var result []error
 UNWRAP:
 	switch err := e.(type) {
 	case interface {
 		Unwrap() []error
 	}:
-		result = append(result, err.(error))
+		if reflect.TypeOf(err).String() != "*errors.joinError" {
+			result = append(result, err.(error))
+		}
+
 		if len(err.Unwrap()) > 0 {
 			e = err.Unwrap()[0]
 			goto UNWRAP
@@ -431,4 +442,20 @@ UNWRAP:
 			return result
 		}
 	}
+}
+
+func ExprToString(expr ast.Expr) (string, error) {
+	out := bytes.NewBuffer([]byte{})
+	err := printer.Fprint(out, token.NewFileSet(), expr)
+	if err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
+func IsRootPath(path string) bool {
+	if len(strings.Split(path, ".")) == 1 {
+		return true
+	}
+	return false
 }

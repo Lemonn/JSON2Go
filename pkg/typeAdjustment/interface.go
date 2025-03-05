@@ -10,14 +10,14 @@ import (
 )
 
 type TypeDeterminationFunction interface {
-	CouldTypeBeApplied(path string) (State, error)
+	CouldTypeBeApplied() (State, error)
 	GetType() ast.Expr
 	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GetName() string
 	SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
-	GetExtraCode() ([]ast.Decl, []string)
+	GetExtraCode() ([]ast.Decl, []string, error)
 	TypeExpansion() bool
 	ForceSourceType() *string
 	GetModFileContents() []*fieldData.ModFileContent

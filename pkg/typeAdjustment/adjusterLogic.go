@@ -3,11 +3,11 @@ package typeAdjustment
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
+	"github.com/Lemonn/JSON2Go/pkg/errors/typeChecker"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	j2gError "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
 	"go/ast"
 	"go/printer"
 	"go/token"
@@ -142,11 +142,22 @@ func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunct
 		return err
 	}
 
+	extraCode, extraImports, err := checker.GetExtraCode()
+	if err != nil {
+		return err
+	}
+	extraCodeOutput := bytes.NewBuffer([]byte{})
+	if err := printer.Fprint(extraCodeOutput, token.NewFileSet(), extraCode); err != nil {
+		return err
+	}
+
 	ta.fileData[path].TypeAdjusterData.ParseFunctions = &fieldData.ParseFunctions{
 		Unmarshall:        unmarshallFunctionOutput.String(),
 		UnmarshallImports: unmarshallImports,
 		Marshall:          marshallFunctionOutput.String(),
 		MarshallImports:   marshallImports,
+		ExtraCode:         extraCodeOutput.String(),
+		ExtraImports:      extraImports,
 	}
 	return nil
 }
@@ -160,18 +171,17 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 
 	checker, err := ta.registeredTypeCheckers.GetByName(*ta.fileData[path].TypeAdjusterData.NameOfActiveTypeAdjuster)
 	if err != nil {
-		return &j2gError.ActiveAdjusterNotFoundError{
+		return &typeChecker.ActiveAdjusterNotFoundError{
 			NotFoundCheckerName: *typeAdjusterData.NameOfActiveTypeAdjuster,
 			ActiveCheckerNames:  ta.registeredTypeCheckers.GetNames(),
 		}
 	}
-
 	err = checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.registeredTypeCheckers, ta.codeGenerator)
 	if err != nil {
 		return err
 	}
 
-	state, err := checker.CouldTypeBeApplied(path)
+	state, err := checker.CouldTypeBeApplied()
 	if err != nil {
 		//TODO check for complex type change error
 		//TODO we could potentially avoid this for the time type, if we start to support both types.
@@ -186,9 +196,13 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 			if err != nil {
 				return err
 			}
-			ta.fileData[path].Error = errors.Join(ta.fileData[path].Error, &j2gError.TypeExpansionError{
-				Path: path,
-			})
+			//TODO return this error instead of setting it directly
+			/*
+				ta.fileData[path].Error = errors.Join(ta.fileData[path].Error, &j2gError.TypeExpansionError{
+					Path: path,
+				})
+
+			*/
 		}
 		checkerState, err := checker.GetState()
 		if err != nil {
@@ -197,7 +211,16 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 		typeAdjusterData.TypeAdjusterData = []json.RawMessage{checkerState}
 		typeAdjusterData.LastCheckedTimestamp = ta.startTimestampPointer()
 	} else {
-		return &j2gError.NoLongerApplicableCustomTypeError{}
+		//TODO put the reset into an extra method
+		ta.fileData[path].TypeAdjusterData.ParseFunctions = nil
+		ta.fileData[path].ActiveType = nil
+		ta.fileData[path].TypeAdjusterData.NameOfActiveTypeAdjuster = nil
+		ta.fileData[path].TypeAdjusterData.CheckerVersion = nil
+		ta.fileData[path].TypeAdjusterData.SetTimestamp = nil
+		ta.fileData[path].TypeAdjusterData.ModFileContents = nil
+		return &typeChecker.NoLongerApplicableCustomTypeError{
+			ActiveTypeChecker: checker.GetName(),
+		}
 	}
 	return nil
 }
@@ -219,7 +242,7 @@ func (ta *TypeAdjuster) AdjustTypes(path string) error {
 		if ta.checkerExcluded(path, checker) {
 			continue
 		}
-
+		fmt.Println("#" + path)
 		err := checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.registeredTypeCheckers, ta.codeGenerator)
 		// Incompatible TypeAdjusterData should never happen here, as we only call this from the generator, which only
 		// works whit already combined files.
@@ -227,7 +250,7 @@ func (ta *TypeAdjuster) AdjustTypes(path string) error {
 			return err
 		}
 
-		state, err := checker.CouldTypeBeApplied(path)
+		state, err := checker.CouldTypeBeApplied()
 		if err != nil {
 			return err
 		}
@@ -237,12 +260,12 @@ func (ta *TypeAdjuster) AdjustTypes(path string) error {
 			if err != nil {
 				return err
 			}
-			typeString, err := utils.ExprToString(checker.GetType())
+			activeType, err := utils.ExprToString(checker.GetType())
 			if err != nil {
 				return err
 			}
 
-			ta.fileData[path].ActiveType = &typeString
+			ta.fileData[path].ActiveType = &activeType
 			ta.fileData[path].ForceSourceType = checker.ForceSourceType()
 
 			typeAdjusterData.NameOfActiveTypeAdjuster = &checkerName
@@ -279,8 +302,8 @@ func (ta *TypeAdjuster) checkerExcluded(path string, checker TypeDeterminationFu
 	if ta.fileData[path].TypeAdjusterData != nil {
 		//Check if excluded by user
 		if ta.fileData[path].TypeAdjusterData.ExcludedTypeCheckers != nil {
-			for _, typeChecker := range ta.fileData[path].TypeAdjusterData.ExcludedTypeCheckers {
-				if checker.GetName() == typeChecker {
+			for _, excludedChecker := range ta.fileData[path].TypeAdjusterData.ExcludedTypeCheckers {
+				if checker.GetName() == excludedChecker {
 					return true
 				}
 			}

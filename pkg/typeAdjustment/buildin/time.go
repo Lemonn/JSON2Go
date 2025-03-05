@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors/typeChecker"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/typeAdjustment/errors"
 	"github.com/araddon/dateparse"
 	"go/ast"
 )
@@ -21,6 +21,7 @@ type TimeTypeChecker struct {
 	fileData              fieldData.FileData
 	codeGenerator         codeGenerators.CodeGenerator
 	version               string
+	currentPath           string
 }
 
 func (t *TimeTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
@@ -37,25 +38,19 @@ func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
 	}
 }
 
-func (t *TimeTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
-	var Level int
+func (t *TimeTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	var err error
-	pathData := t.fileData[path]
-	//TODO check if its struct type and ignore
-	if len(pathData.Types) > 1 {
+	pathData := t.fileData[t.currentPath]
+
+	fmt.Println(t.currentPath + "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
+	basicType, levelOfArray, Type := t.codeGenerator.IsBasicTypeWhitDetails(t.currentPath)
+	if !basicType {
 		return typeAdjustment.StateFailed, nil
-	}
-	Type := t.codeGenerator.GetType(path)
-	if len(pathData.Types[Type]) > 1 {
-		return typeAdjustment.StateFailed, nil
-	}
-	for Level = range pathData.Types[Type] {
-		break
 	}
 
 	layoutStrings := make(map[string]struct{})
 	var newLayoutString string
-	for value := range pathData.Types[Type][Level] {
+	for value := range pathData.Types[Type][levelOfArray] {
 		newLayoutString, err = dateparse.ParseFormat(value)
 		if err != nil {
 			return typeAdjustment.StateFailed, nil
@@ -141,8 +136,8 @@ func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 	return functionScaffold, []string{"time"}, nil
 }
 
-func (t *TimeTypeChecker) GetExtraCode() ([]ast.Decl, []string) {
-	return []ast.Decl{}, nil
+func (t *TimeTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
+	return []ast.Decl{}, nil, nil
 }
 
 func (t *TimeTypeChecker) TypeExpansion() bool {
@@ -181,25 +176,26 @@ func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string,
 		t.state = &timeTypeCheckerState{
 			LayoutString: nil,
 		}
-		return nil
-	}
-	var state *timeTypeCheckerState
-	err := json.Unmarshal(states[0], &state)
-	if err != nil {
-		return err
-	}
-	for i := 1; i < len(states); i++ {
-		var currentState *timeTypeCheckerState
-		err := json.Unmarshal(states[i], &currentState)
+	} else {
+		var state *timeTypeCheckerState
+		err := json.Unmarshal(states[0], &state)
 		if err != nil {
 			return err
 		}
-		state, err = state.combiner(currentState)
-		if err != nil {
-			return err
+		for i := 1; i < len(states); i++ {
+			var currentState *timeTypeCheckerState
+			err := json.Unmarshal(states[i], &currentState)
+			if err != nil {
+				return err
+			}
+			state, err = state.combiner(currentState)
+			if err != nil {
+				return err
+			}
 		}
+		t.state = state
 	}
-	t.state = state
+	t.currentPath = currentPath
 	return nil
 }
 

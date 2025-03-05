@@ -11,19 +11,17 @@ import (
 )
 
 type Parser struct {
-	seenTypes     map[string]*fieldData.PathData
-	startTime     time.Time
-	eaa           bool
-	seenTypeUtils *utils.SeenTypeUtils
+	seenTypes map[string]*fieldData.PathData
+	startTime time.Time
+	eaa       bool
 }
 
 func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (map[string]*fieldData.PathData, error) {
 	seenTypes := make(map[string]*fieldData.PathData)
 	p := Parser{
-		seenTypes:     seenTypes,
-		startTime:     time.Now(),
-		eaa:           externalizeAnonymousArray,
-		seenTypeUtils: utils.NewSeenTypeUtils(seenTypes),
+		seenTypes: seenTypes,
+		startTime: time.Now(),
+		eaa:       externalizeAnonymousArray,
 	}
 
 	var JsonData interface{}
@@ -36,15 +34,19 @@ func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousAr
 	if err != nil {
 		return nil, err
 	}
-	if p.eaa {
-		p.externalizeAnonymousArray(structName)
-	}
+	/*
+		if p.eaa {
+			p.externalizeAnonymousArray(structName)
+		}
 
+	*/
 	return p.seenTypes, err
 }
 
+//TODO this should be moved into the codeGenerator, as it'S only up to it how it handles such a case
+/*
 func (p *Parser) externalizeAnonymousArray(structName string) {
-	if p.seenTypeUtils.IsStruct(structName) {
+	if p.codeGenerator.IsStruct(structName) {
 		var levelOfArrays int
 		for levelOfArrays, _ = range p.seenTypes[structName].Types["field"] {
 			break
@@ -69,9 +71,10 @@ func (p *Parser) externalizeAnonymousArray(structName string) {
 				LastSeenTimestamp:  0,
 			}
 		}
-
 	}
 }
+
+*/
 
 func (p *Parser) codeGen(jsonData interface{}, path string, depth int) error {
 	switch result := jsonData.(type) {
@@ -157,6 +160,7 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 	return nil
 }
 
+// Processes JSON-Field elements
 func (p *Parser) processField(field interface{}, path string, depth int) error {
 	if _, ok := p.seenTypes[path]; !ok {
 		p.seenTypes[path] = &fieldData.PathData{}

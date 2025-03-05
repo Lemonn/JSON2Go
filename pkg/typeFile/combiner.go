@@ -6,7 +6,7 @@ import (
 	timestampError "github.com/Lemonn/JSON2Go/internal/error"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
+	"github.com/Lemonn/JSON2Go/pkg/errors/combiner"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"maps"
 	"sort"
@@ -198,7 +198,7 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 	//Combine JsonFieldName
 	if p.JsonFieldName != p1.JsonFieldName {
 		// TODO respect the conflict handler
-		return nil, nil, &j2gErrors.ConflictingJsonFieldNameError{
+		return nil, nil, &combiner.ConflictingJsonFieldNameError{
 			Timestamp:    c.startTime.Unix(),
 			OldFieldName: p.JsonFieldName,
 			NewFieldName: p1.JsonFieldName,
@@ -223,7 +223,7 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 	} else if p.ForceSourceType != nil && p1.ForceSourceType != nil {
 		//TODO respect conflict resolving strategic
 		if *p1.ForceSourceType != *p.ForceSourceType {
-			return nil, nil, &j2gErrors.ConflictingForceSourceTypeError{}
+			return nil, nil, &combiner.ConflictingForceSourceTypeError{}
 		} else {
 			newP.ForceSourceType = p.ForceSourceType
 		}
@@ -231,7 +231,7 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldPa
 
 	if p.DirectToForceSourceType != p1.DirectToForceSourceType {
 		//TODO respect conflict resolving strategic
-		return nil, nil, &j2gErrors.ConflictingForceSourceTypeError{}
+		return nil, nil, &combiner.ConflictingForceSourceTypeError{}
 	} else {
 		newP.DirectToForceSourceType = p.DirectToForceSourceType
 	}

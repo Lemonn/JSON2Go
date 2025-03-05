@@ -17,7 +17,6 @@ func NewStoreType(err error) *StoreType {
 		Type: reflect.TypeOf(err).String(),
 		Err:  err,
 	}
-
 }
 
 func NewStoreTypeArray(err error) []*StoreType {
@@ -39,7 +38,9 @@ func (e *StoreType) UnmarshalJSON(bytes []byte) error {
 		return err
 	}
 
-	//TODO add all error types we want to store here
+	//IDEA we could write a generator that searches all relevant errors and adds them. This could be done in an extra
+	// library, which does provide error storage code gen functions.
+	//All error types that are stored inside the JSON-File need to be added here!
 	switch localType.Type {
 	case reflect.TypeOf(&typeChecker.NoLongerApplicableCustomTypeError{}).String():
 		var te typeChecker.NoLongerApplicableCustomTypeError
@@ -48,6 +49,8 @@ func (e *StoreType) UnmarshalJSON(bytes []byte) error {
 		}
 		e.Err = &te
 		e.Type = localType.Type
+	default:
+		return &UnknownStoreTypeError{TypeName: localType.Type}
 	}
 	return nil
 }

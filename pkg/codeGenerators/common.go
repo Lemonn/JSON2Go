@@ -7,7 +7,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"math"
-	"strings"
 )
 
 type Common struct {
@@ -36,7 +35,6 @@ func (b *Common) IsPointer(path string) bool {
 				if _, ok := v[Level]; ok && len(v) == 1 {
 					PointerType = true
 				}
-
 			}
 		} else if _, ok := b.fileData[path].Types[fieldData.String]; ok {
 			if v, ok := b.fileData[path].Types[fieldData.Null]; ok {
@@ -268,27 +266,11 @@ func (b *Common) ContainsPointerType(path string) bool {
 	return false
 }
 
-func (b *Common) GetParentPath(path string) string {
-	pathElements := strings.Split(path, ".")
-	if len(pathElements) > 1 {
-		return strings.Join(pathElements[:len(pathElements)-1], ".")
-	} else {
-		return path
-	}
-}
-
-func (b *Common) IsRootPath(path string) bool {
-	if len(strings.Split(path, ".")) == 1 {
-		return true
-	}
-	return false
-}
-
 func (b *Common) Omitempty(path string) bool {
-	if b.IsRootPath(path) {
+	if utils.IsRootPath(path) {
 		return false
 	} else {
-		parentPath := b.GetParentPath(path)
+		parentPath := utils.GetParentPath(path)
 		LevelOfArrays := b.GetLevelOfArrays(path)
 		if _, ok := b.fileData[parentPath].Types[fieldData.EmptyStruct]; ok {
 			if _, ok := b.fileData[parentPath].Types[fieldData.EmptyStruct][LevelOfArrays]; ok {
@@ -321,4 +303,40 @@ func (b *Common) GetJsonTag(path string) string {
 			return ""
 		}
 	}())
+}
+
+func (b *Common) IsBasicType(path string) bool {
+	d, _, _ := b.IsBasicTypeWhitDetails(path)
+	return d
+}
+
+func (b *Common) IsBasicTypeWhitDetails(path string) (bool, int, fieldData.Type) {
+	var setType *fieldData.Type
+	var setLevel *int
+
+	if _, ok := b.fileData[path].Types[fieldData.EmptyStruct]; ok {
+		return false, 0, fieldData.Unsupported
+	} else if _, ok := b.fileData[path].Types[fieldData.Field]; ok {
+		return false, 0, fieldData.Unsupported
+	}
+
+	for Type, levels := range b.fileData[path].Types {
+		if !(Type == fieldData.Null || Type == fieldData.EmptyArray) && setType != nil && *setType != Type {
+			return false, 0, fieldData.Unsupported
+		} else if !(Type == fieldData.Null || Type == fieldData.EmptyArray) && setType == nil {
+			setType = &Type
+		}
+		for level, _ := range levels {
+			if setLevel == nil {
+				setLevel = &level
+			} else if *setLevel != level {
+				return false, 0, fieldData.Unsupported
+			}
+		}
+
+	}
+	if setType != nil && setLevel != nil {
+		return true, *setLevel, *setType
+	}
+	return false, 0, fieldData.Unsupported
 }

@@ -16,4 +16,6 @@ type CodeGenerator interface {
 	GetType(path string) fieldData.Type
 	GetLevelOfArrays(path string) int
 	CheckType(path string) error
+	IsBasicType(path string) bool
+	IsBasicTypeWhitDetails(path string) (bool, int, fieldData.Type)
 }

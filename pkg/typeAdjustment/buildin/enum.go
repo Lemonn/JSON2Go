@@ -5,122 +5,76 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
+	"github.com/Lemonn/JSON2Go/pkg/errors/typeChecker"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/token"
-	"strings"
+	"maps"
 )
 
 type EnumTypeChecker struct {
-	totalFilesSeen int
-	minFilesSeen   int
-	maxFieldCount  int
-	minFieldCount  int
-	minTimesSeen   int
-	seenValues     []string
-	fieldType      string
-	file           *ast.File
-	enumType       string
-	decls          []ast.Decl
-	currentPath    string
-	state          *EnumTypeCheckerState
+	seenValues    []string
+	currentPath   string
+	state         *EnumTypeCheckerState
+	settings      *EnumTypeCheckerSettings
+	fileData      fieldData.FileData
+	codeGenerator codeGenerators.CodeGenerator
+}
+
+type EnumTypeCheckerSettings struct {
+	MinFieldCount   int
+	MaxFieldCount   int
+	MinTimesSeen    int
+	SeenValuesRatio float64
+}
+
+type EnumTypeCheckerState struct {
+	FieldOrder map[string]int           `json:"fieldOrder"`
+	Settings   *EnumTypeCheckerSettings `json:"settings"`
+}
+
+func (s *EnumTypeCheckerState) combine(s1 *EnumTypeCheckerState) (*EnumTypeCheckerState, error) {
+
+	var state EnumTypeCheckerState
+	indexes := make(map[int]struct{})
+	for fieldName, i := range s.FieldOrder {
+		if v, ok := s1.FieldOrder[fieldName]; ok && v != i {
+			return nil, &typeChecker.IncompatibleCustomTypeError{
+				Err: errors.New(fmt.Sprintf("settings could not be combined, as the filed order is incompatible")),
+			}
+		}
+		indexes[i] = struct{}{}
+	}
+
+	for _, i := range s.FieldOrder {
+		if _, ok := indexes[i]; !ok {
+			return nil, &typeChecker.IncompatibleCustomTypeError{
+				Err: errors.New(fmt.Sprintf("settings could not be combined, as a field index occured more than once")),
+			}
+		}
+	}
+
+	state.FieldOrder = make(map[string]int)
+	maps.Copy(state.FieldOrder, s.FieldOrder)
+	maps.Copy(state.FieldOrder, s1.FieldOrder)
+
+	//TODO combine settings
+	return &state, nil
 }
 
 func NewEnumTypeChecker(settings *EnumTypeCheckerSettings) *EnumTypeChecker {
 	return &EnumTypeChecker{
-		minFilesSeen:   settings.MinFilesSeen,
-		maxFieldCount:  settings.MaxFieldCount,
-		totalFilesSeen: 100,
-		minFieldCount:  2,
-		minTimesSeen:   settings.MinTimesSeen,
+		settings: settings,
 	}
 }
 
-type EnumTypeCheckerSettings struct {
-	MinFilesSeen  int
-	MinFieldCount int
-	MaxFieldCount int
-	MinTimesSeen  int
+func (e *EnumTypeChecker) getEnumName() string {
+	return utils.GetFieldName(e.currentPath) + "Enum"
 }
 
-type EnumTypeCheckerState struct {
-	FieldOrder map[string]int
-}
-
-func (e *EnumTypeChecker) CouldTypeBeApplied(seenValues map[string]*fieldData.ValueData) (typeAdjustment.State, error) {
-	if e.totalFilesSeen < e.minFilesSeen {
-		return typeAdjustment.StateUndecided, nil
-	} else if len(seenValues) > e.maxFieldCount || len(seenValues) < e.minFieldCount {
-		return typeAdjustment.StateFailed, nil
-	}
-	var fieldType string
-	for _, valueData := range seenValues {
-		if valueData.Type != "string" {
-			return typeAdjustment.StateFailed, nil
-		} else if fieldType == "" {
-			fieldType = valueData.Type
-		}
-	}
-	if e.state == nil {
-		e.state = &EnumTypeCheckerState{
-			FieldOrder: make(map[string]int),
-		}
-	} else if e.state.FieldOrder == nil {
-		e.state.FieldOrder = make(map[string]int)
-	}
-
-	if len(e.state.FieldOrder) == 0 {
-		e.state.FieldOrder["InvalidEnumValue"] = 0
-	}
-
-	e.seenValues = []string{}
-	e.fieldType = fieldType
-	if e.state != nil && e.state.FieldOrder != nil {
-		for fieldValue, fieldValues := range seenValues {
-			if e.minTimesSeen >= fieldValues.Count {
-				return typeAdjustment.StateUndecided, nil
-			}
-			if _, ok := e.state.FieldOrder[fieldValue]; !ok {
-				e.state.FieldOrder[fieldValue] = len(e.state.FieldOrder)
-			}
-		}
-	}
-	e.seenValues = make([]string, len(e.state.FieldOrder))
-	for s, i := range e.state.FieldOrder {
-		e.seenValues[i] = s
-	}
-	return typeAdjustment.StateApplicable, nil
-}
-
-func (e *EnumTypeChecker) GetType() ast.Expr {
-	return &ast.Ident{Name: "Enum" + strings.ReplaceAll(e.currentPath, ".", "")}
-}
-
-func (e *EnumTypeChecker) GenerateFromTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
-	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.ReturnStmt{
-		Results: []ast.Expr{
-			&ast.CallExpr{
-				Fun: &ast.Ident{
-					Name: "NewEnum" + strings.ReplaceAll(e.currentPath, ".", ""),
-				},
-				Args: []ast.Expr{
-					&ast.Ident{
-						Name: "baseValue",
-					},
-				},
-			},
-		},
-	})
-
-	err := e.generateType("Enum" + strings.ReplaceAll(e.currentPath, ".", ""))
-	if err != nil {
-		return nil, err
-	}
-	return functionScaffold, nil
-}
-
-func (e *EnumTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error) {
+func (e *EnumTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
 	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.Ident{
@@ -128,7 +82,7 @@ func (e *EnumTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 			},
 			Op: token.EQL,
 			Y: &ast.Ident{
-				Name: "Enum" + strings.ReplaceAll(e.currentPath, ".", "") + "InvalidEnumValue",
+				Name: e.getEnumName() + "InvalidEnumValue",
 			},
 		},
 		Body: &ast.BlockStmt{
@@ -196,52 +150,70 @@ func (e *EnumTypeChecker) GenerateToTypeFunction(functionScaffold *ast.FuncDecl)
 			},
 		},
 	})
-	return functionScaffold, nil
+	//TODO add imports
+	return functionScaffold, nil, nil
 }
 
-func (e *EnumTypeChecker) GetRequiredImports() []string {
-	return []string{"errors"}
+func (e *EnumTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.ReturnStmt{
+		Results: []ast.Expr{
+			&ast.CallExpr{
+				Fun: &ast.Ident{
+					Name: "New" + e.getEnumName(),
+				},
+				Args: []ast.Expr{
+					&ast.Ident{
+						Name: "baseValue",
+					},
+				},
+			},
+		},
+	})
+	//TODO add imports
+	return functionScaffold, nil, nil
 }
 
-func (e *EnumTypeChecker) SetFile(file *ast.File) {
-	e.file = file
-}
-
-func (e *EnumTypeChecker) GetName() string {
-	return "json2go.EnumTypeChecker"
-}
-
-func (e *EnumTypeChecker) SetState(state []*json.RawMessage, currentPath string) error {
-	//TODO combine states
-	/*
-		e.currentPath = currentPath
-		e.state = nil
-		if state != nil {
-			err := json.Unmarshal(state, e.state)
-			if err != nil {
-				return err
-			}
+func (e *EnumTypeChecker) SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+	e.currentPath = currentPath
+	e.fileData = fileData
+	e.codeGenerator = codeGenerator
+	if states == nil || len(states) == 0 {
+		e.state = &EnumTypeCheckerState{
+			FieldOrder: make(map[string]int),
+			Settings:   e.settings,
 		}
+		return nil
+	}
 
-	*/
+	var state0, state1 *EnumTypeCheckerState
+	err := json.Unmarshal(states[0], &state0)
+	if err != nil {
+		return err
+	}
+	for {
+		if len(states) == 1 {
+			break
+		}
+		err = json.Unmarshal(states[1], &state1)
+		if err != nil {
+			return err
+		}
+		states = states[2:]
+		state0, err = state0.combine(state1)
+		if err != nil {
+			return err
+		}
+	}
+	e.state = state0
 	return nil
+
 }
 
-func (e *EnumTypeChecker) GetState() ([]*json.RawMessage, error) {
-	//TODO combine states
-	/*
-		if e.state == nil {
-			return nil, nil
-		}
-		return json.Marshal(e.state)
-
-	*/
-	return nil, nil
+func (e *EnumTypeChecker) GetState() (json.RawMessage, error) {
+	return json.Marshal(&e.state)
 }
 
-func (e *EnumTypeChecker) generateType(enumName string) error {
-	//TODO check if type is existent, if so delete first
-	var err error
+func (e *EnumTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
 	var decls []ast.Decl
 
 	//Add enum type
@@ -250,7 +222,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 		Specs: []ast.Spec{
 			&ast.TypeSpec{
 				Name: &ast.Ident{
-					Name: enumName,
+					Name: e.getEnumName(),
 				},
 				Type: &ast.Ident{
 					Name: "int",
@@ -269,11 +241,11 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 					specs = append(specs, &ast.ValueSpec{
 						Names: []*ast.Ident{
 							&ast.Ident{
-								Name: enumName + utils.JsonNameToGoName(value),
+								Name: e.getEnumName() + utils.JsonNameToGoName(value),
 							},
 						},
 						Type: &ast.Ident{
-							Name: enumName,
+							Name: e.getEnumName(),
 						},
 						Values: []ast.Expr{
 							&ast.Ident{
@@ -285,7 +257,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 					specs = append(specs, &ast.ValueSpec{
 						Names: []*ast.Ident{
 							&ast.Ident{
-								Name: enumName + utils.JsonNameToGoName(value),
+								Name: e.getEnumName() + utils.JsonNameToGoName(value),
 							},
 						},
 					})
@@ -298,7 +270,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 	//Add new enum type function
 	decls = append(decls, &ast.FuncDecl{
 		Name: &ast.Ident{
-			Name: "New" + enumName,
+			Name: "New" + e.getEnumName(),
 		},
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
@@ -319,7 +291,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 				List: []*ast.Field{
 					&ast.Field{
 						Type: &ast.Ident{
-							Name: enumName,
+							Name: e.getEnumName(),
 						},
 					},
 					&ast.Field{
@@ -342,35 +314,13 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 							for _, value := range e.seenValues {
 								stmts = append(stmts, &ast.CaseClause{
 									List: []ast.Expr{
-										func() *ast.BasicLit {
-											fmt.Println(value)
-											switch e.fieldType {
-											case "string":
-												return &ast.BasicLit{
-													Kind:  token.STRING,
-													Value: "\"" + value + "\"",
-												}
-											case "int":
-												return &ast.BasicLit{
-													Kind:  token.INT,
-													Value: value,
-												}
-											case "float":
-												return &ast.BasicLit{
-													Kind:  token.FLOAT,
-													Value: value,
-												}
-											default:
-												err = errors.New(fmt.Sprintf("encountered an unsupported type: %s", e.fieldType))
-												return nil
-											}
-										}(),
+										&ast.BasicLit{Value: "\"" + value + "\""},
 									},
 									Body: []ast.Stmt{
 										&ast.ReturnStmt{
 											Results: []ast.Expr{
 												&ast.Ident{
-													Name: enumName + utils.JsonNameToGoName(value),
+													Name: e.getEnumName() + utils.JsonNameToGoName(value),
 												},
 												&ast.Ident{
 													Name: "nil",
@@ -379,16 +329,13 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 										},
 									},
 								})
-								if err != nil {
-									break
-								}
 							}
 							stmts = append(stmts, &ast.CaseClause{
 								Body: []ast.Stmt{
 									&ast.ReturnStmt{
 										Results: []ast.Expr{
 											&ast.Ident{
-												Name: enumName + "InvalidEnumValue",
+												Name: e.getEnumName() + "InvalidEnumValue",
 											},
 											&ast.CallExpr{
 												Fun: &ast.SelectorExpr{
@@ -444,7 +391,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 						},
 					},
 					Type: &ast.Ident{
-						Name: enumName,
+						Name: e.getEnumName(),
 					},
 				},
 			},
@@ -477,7 +424,7 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 								stmts = append(stmts, &ast.CaseClause{
 									List: []ast.Expr{
 										&ast.Ident{
-											Name: enumName + utils.JsonNameToGoName(value),
+											Name: e.getEnumName() + utils.JsonNameToGoName(value),
 										},
 									},
 									Body: []ast.Stmt{
@@ -512,12 +459,72 @@ func (e *EnumTypeChecker) generateType(enumName string) error {
 		},
 	})
 
-	if err != nil {
-		return err
+	return decls, nil, nil
+}
+
+func (e *EnumTypeChecker) ratio(levelOfArrays int) float64 {
+	return float64(e.fileData[e.currentPath].SeenCounter) / float64(len(e.fileData[e.currentPath].Types[fieldData.String][levelOfArrays]))
+}
+
+func (e *EnumTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
+
+	isBasicType, levelOfArrays, Type := e.codeGenerator.IsBasicTypeWhitDetails(e.currentPath)
+	if !isBasicType || Type != fieldData.String {
+		return typeAdjustment.StateFailed, nil
+	} else if e.fileData[e.currentPath].SeenCounter < e.settings.MinTimesSeen {
+		return typeAdjustment.StateUndecided, nil
+	} else if len(e.fileData[e.currentPath].Types[fieldData.String][levelOfArrays]) > e.settings.MaxFieldCount {
+		return typeAdjustment.StateFailed, nil
+	} else if e.ratio(levelOfArrays) < e.settings.SeenValuesRatio {
+		return typeAdjustment.StateFailed, nil
 	}
 
-	//If no error happened, attach all generated code to the file
-	e.file.Decls = append(e.file.Decls, decls...)
+	if e.state == nil {
+		e.state = &EnumTypeCheckerState{
+			FieldOrder: make(map[string]int),
+		}
+	} else if e.state.FieldOrder == nil {
+		e.state.FieldOrder = make(map[string]int)
+	}
 
+	if len(e.state.FieldOrder) == 0 {
+		e.state.FieldOrder["InvalidEnumValue"] = 0
+	}
+
+	e.seenValues = []string{}
+	for fieldValue, _ := range e.fileData[e.currentPath].Types[fieldData.String][levelOfArrays] {
+		if _, ok := e.state.FieldOrder[fieldValue]; !ok {
+			e.state.FieldOrder[fieldValue] = len(e.state.FieldOrder)
+		}
+	}
+	e.seenValues = make([]string, len(e.state.FieldOrder))
+	for s, i := range e.state.FieldOrder {
+		e.seenValues[i] = s
+	}
+	return typeAdjustment.StateApplicable, nil
+}
+
+func (e *EnumTypeChecker) TypeExpansion() bool {
+	//TODO replace whit implementation
+	return false
+}
+
+func (e *EnumTypeChecker) ForceSourceType() *string {
 	return nil
+}
+
+func (e *EnumTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
+	return nil
+}
+
+func (e *EnumTypeChecker) GetVersion() *string {
+	return utils.StringToPointer("v0.0.1")
+}
+
+func (e *EnumTypeChecker) GetType() ast.Expr {
+	return &ast.Ident{Name: e.getEnumName()}
+}
+
+func (e *EnumTypeChecker) GetName() string {
+	return "json2go.EnumTypeChecker"
 }

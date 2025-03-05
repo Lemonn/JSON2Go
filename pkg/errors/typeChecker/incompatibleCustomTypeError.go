@@ -21,6 +21,5 @@ func (e *IncompatibleCustomTypeError) GetTimestamp() time.Time {
 func (e *IncompatibleCustomTypeError) IsFileError() {}
 
 func (e *IncompatibleCustomTypeError) Error() string {
-	//TODO implement me
-	panic("implement me")
+	return e.Err.Error()
 }

@@ -13,6 +13,7 @@ type UUIDTypeChecker struct {
 	fileData      fieldData.FileData
 	codeGenerator codeGenerators.CodeGenerator
 	version       string
+	path          string
 }
 
 func (u *UUIDTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
@@ -84,15 +85,15 @@ func (u *UUIDTypeChecker) TypeExpansion() bool {
 	return false
 }
 
-func (u *UUIDTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
+func (u *UUIDTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	var Level int
 	var err error
-	pathData := u.fileData[path]
+	pathData := u.fileData[u.path]
 	//TODO check if its struct type and ignore
 	if len(pathData.Types) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	Type := u.codeGenerator.GetType(path)
+	Type := u.codeGenerator.GetType(u.path)
 	if len(pathData.Types[Type]) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
@@ -109,13 +110,14 @@ func (u *UUIDTypeChecker) CouldTypeBeApplied(path string) (typeAdjustment.State,
 	return typeAdjustment.StateApplicable, nil
 }
 
-func (u *UUIDTypeChecker) GetExtraCode() ([]ast.Decl, []string) {
-	return nil, nil
+func (u *UUIDTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
+	return nil, nil, nil
 }
 
-func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, _ string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, path string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
 	u.fileData = fileData
 	u.codeGenerator = codeGenerator
+	u.path = path
 	return nil
 }
 
