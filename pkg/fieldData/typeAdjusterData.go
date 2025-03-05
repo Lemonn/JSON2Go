@@ -3,7 +3,7 @@ package fieldData
 import (
 	"encoding/json"
 	"errors"
-	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors"
+	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors/combiner"
 )
 
 type TypeAdjusterData struct {

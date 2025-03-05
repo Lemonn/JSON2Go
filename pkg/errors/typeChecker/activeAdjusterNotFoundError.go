@@ -1,4 +1,4 @@
-package errors
+package typeChecker
 
 import "fmt"
 

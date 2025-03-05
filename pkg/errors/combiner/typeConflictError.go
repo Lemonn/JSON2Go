@@ -1,4 +1,4 @@
-package errors
+package combiner
 
 // TypeConflictError Is emitted whenever a type with no custom type assigned changes it's representation.
 type TypeConflictError struct {
