@@ -3,6 +3,7 @@ package buildin
 import (
 	"encoding/json"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
@@ -12,9 +13,8 @@ import (
 
 type Boolean struct {
 	state         *BooleanState
-	seenTypes     map[string]*fieldData.PathData
-	seenTypeUtils *utils.SeenTypeUtils
-	activePath    string
+	fieldData     fieldData.FileData
+	codeGenerator codeGenerators.CodeGenerator
 }
 
 type BooleanState struct {
@@ -38,11 +38,11 @@ func NewBoolean(trueStrings map[string]struct{}, falseStrings map[string]struct{
 }
 
 func (b *Boolean) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
-	basicType, Level, Type := b.seenTypeUtils.IsBasicTypeWhitDetails(path)
+	basicType, Level, Type := b.codeGenerator.IsBasicTypeWhitDetails(path)
 	if !basicType {
 		return typeAdjustment.StateFailed, nil
 	}
-	for s, _ := range b.seenTypes[path].Types[Type][Level] {
+	for s, _ := range b.fieldData[path].Types[Type][Level] {
 		if _, ok := b.state.TrueStrings[s]; ok {
 			return typeAdjustment.StateApplicable, nil
 		} else if _, ok := b.state.FalseStrings[s]; ok {
@@ -335,7 +335,7 @@ func (b *Boolean) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncD
 	return functionScaffold, []string{"errors"}, nil
 }
 
-func (b *Boolean) SetState(states []json.RawMessage, _ string, _ []typeAdjustment.TypeDeterminationFunction, seenTypes map[string]*fieldData.PathData) error {
+func (b *Boolean) SetState(states []json.RawMessage, _ string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
 	if b.state == nil {
 		b.state = &BooleanState{
 			TrueStrings:  make(map[string]struct{}),
@@ -351,7 +351,8 @@ func (b *Boolean) SetState(states []json.RawMessage, _ string, _ []typeAdjustmen
 		maps.Copy(b.state.FalseStrings, lbs.FalseStrings)
 		maps.Copy(b.state.TrueStrings, lbs.TrueStrings)
 	}
-	b.seenTypes = seenTypes
+	b.fieldData = fileData
+	b.codeGenerator = codeGenerator
 	return nil
 }
 
@@ -375,16 +376,21 @@ func (b *Boolean) GetModFileContents() []*fieldData.ModFileContent {
 	return nil
 }
 
-func (b *Boolean) GetVersion() string {
-	return "v0.0.1"
+func (b *Boolean) GetVersion() *string {
+	return utils.StringToPointer("v0.0.1")
 }
 
 func (b *Boolean) GetType() ast.Expr {
 	var expr ast.Expr
 	expr = &ast.Ident{Name: "bool"}
-	if b.seenTypeUtils.PointerType(b.activePath) {
-		expr = &ast.StarExpr{X: expr}
-	}
+	//TODO should we generate the pointer type here, or should we make each type to an pointer type, if the field is
+	// of pointer type?
+	/*
+		if b.codeGenerator.IsPointer(b.activePath) {
+			expr = &ast.StarExpr{X: expr}
+		}
+
+	*/
 	return expr
 }
 

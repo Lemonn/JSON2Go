@@ -29,7 +29,6 @@ const (
 )
 
 func (i *IntTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
-
 	var f, s bool
 	for Type, levels := range i.fileData[i.currentPath].Types {
 		if len(levels) > 1 {
@@ -1209,8 +1208,9 @@ func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*as
 	}
 }
 
-func (i *IntTypeChecker) SetState(_ []json.RawMessage, currentPath string, _ fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, _ codeGenerators.CodeGenerator) error {
+func (i *IntTypeChecker) SetState(_ []json.RawMessage, currentPath string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, _ codeGenerators.CodeGenerator) error {
 	i.currentPath = currentPath
+	i.fileData = fileData
 	return nil
 }
 

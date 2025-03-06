@@ -41,8 +41,6 @@ func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
 func (t *TimeTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	var err error
 	pathData := t.fileData[t.currentPath]
-
-	fmt.Println(t.currentPath + "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
 	basicType, levelOfArray, Type := t.codeGenerator.IsBasicTypeWhitDetails(t.currentPath)
 	if !basicType {
 		return typeAdjustment.StateFailed, nil
@@ -172,7 +170,7 @@ func (t *timeTypeCheckerState) combiner(t1 *timeTypeCheckerState) (*timeTypeChec
 func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
 	t.fileData = fileData
 	t.codeGenerator = codeGenerator
-	if states == nil || len(states) == 0 {
+	if states == nil || len(states) == 0 || states[0] == nil {
 		t.state = &timeTypeCheckerState{
 			LayoutString: nil,
 		}

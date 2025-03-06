@@ -151,7 +151,7 @@ func (e *EnumTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 		},
 	})
 	//TODO add imports
-	return functionScaffold, nil, nil
+	return functionScaffold, []string{"fmt"}, nil
 }
 
 func (e *EnumTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
@@ -177,7 +177,7 @@ func (e *EnumTypeChecker) SetState(states []json.RawMessage, currentPath string,
 	e.currentPath = currentPath
 	e.fileData = fileData
 	e.codeGenerator = codeGenerator
-	if states == nil || len(states) == 0 {
+	if states == nil || len(states) == 0 || states[0] == nil {
 		e.state = &EnumTypeCheckerState{
 			FieldOrder: make(map[string]int),
 			Settings:   e.settings,
@@ -459,7 +459,7 @@ func (e *EnumTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
 		},
 	})
 
-	return decls, nil, nil
+	return decls, []string{"fmt"}, nil
 }
 
 func (e *EnumTypeChecker) ratio(levelOfArrays int) float64 {
