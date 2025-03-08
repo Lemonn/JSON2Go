@@ -300,27 +300,56 @@ func GenerateTypeWhitInitializedArrays(str *ast.StructType) *ast.AssignStmt {
 	}
 }
 
-func GetEmptyFile(packageName string) *ast.File {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "", "package "+packageName, parser.ParseComments)
+func GetEmptyAstFile(packageName string) (*ast.File, *token.FileSet) {
+	fSet := token.NewFileSet()
+	file, err := parser.ParseFile(fSet, "", "package "+packageName, parser.ParseComments)
 	if err != nil {
 		panic(err)
 	}
 	file.Decls = []ast.Decl{}
-	return file
+	return file, fSet
 }
 
 // TODO this function needs to handle more possible edge cases
 func JsonNameToGoName(str string) string {
-	if unicode.IsNumber(rune(str[0])) {
-		str = "number_" + str
-	}
 	if len(str) == 2 && str[1] == '_' {
 		return str
 	} else if len(str) == 1 && unicode.IsLower(rune(str[0])) {
 		return strcase.ToCamel(str) + "_"
 	} else {
-		return strcase.ToCamel(str)
+		c := strcase.ToCamel(str)
+		if unicode.IsNumber(rune(str[0])) {
+			return "_" + c
+			/*
+				switch rune(str[0]) {
+				case '0':
+					str = "zero_" + str
+				case '1':
+					str = "one_" + str
+				case '2':
+					str = "two_" + str
+				case '3':
+					str = "three_" + str
+				case '4':
+					str = "four_" + str
+				case '5':
+					str = "five_" + str
+				case '6':
+					str = "six_" + str
+				case '7':
+					str = "seven_" + str
+				case '8':
+					str = "eight_" + str
+				case '9':
+					str = "nine_" + str
+				default:
+					return str
+				}
+
+			*/
+		} else {
+			return c
+		}
 	}
 }
 

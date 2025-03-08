@@ -1,16 +1,12 @@
 package typeAdjustment
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/errors/typeChecker"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
-	"go/printer"
-	"go/token"
 	"strings"
 	"time"
 )
@@ -46,7 +42,7 @@ func (ta *TypeAdjuster) SetActiveTypeFile(fileData map[string]*fieldData.PathDat
 	ta.fileData = fileData
 }
 
-func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDeterminationFunction) *ast.FuncDecl {
+func (ta *TypeAdjuster) getUnmarshallScaffold(path string, replacementExpr ast.Expr) *ast.FuncDecl {
 	pathElements := strings.Split(path, ".")
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
@@ -68,7 +64,7 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDetermina
 			Results: &ast.FieldList{
 				List: []*ast.Field{
 					{
-						Type: checker.GetType(),
+						Type: replacementExpr,
 					},
 					{
 						Type: &ast.Ident{
@@ -84,7 +80,7 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path string, checker TypeDetermina
 	}
 }
 
-func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminationFunction) *ast.FuncDecl {
+func (ta *TypeAdjuster) getMarshallScaffold(path string, replacementExpr ast.Expr) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
 			Name: "Marshall" + utils.GetFieldName(path),
@@ -98,7 +94,7 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminati
 								Name: "baseValue",
 							},
 						},
-						Type: checker.GetType(),
+						Type: replacementExpr,
 					},
 				},
 			},
@@ -121,47 +117,6 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, checker TypeDeterminati
 	}
 }
 
-func (ta *TypeAdjuster) setFunctions(path string, checker TypeDeterminationFunction) error {
-	unmarshallFunction, unmarshallImports, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, checker))
-	if err != nil {
-		return err
-	}
-
-	unmarshallFunctionOutput := bytes.NewBuffer([]byte{})
-	if err := printer.Fprint(unmarshallFunctionOutput, token.NewFileSet(), unmarshallFunction); err != nil {
-		return err
-	}
-
-	marshallFunction, marshallImports, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, checker))
-	if err != nil {
-		return err
-	}
-
-	marshallFunctionOutput := bytes.NewBuffer([]byte{})
-	if err := printer.Fprint(marshallFunctionOutput, token.NewFileSet(), marshallFunction); err != nil {
-		return err
-	}
-
-	extraCode, extraImports, err := checker.GetExtraCode()
-	if err != nil {
-		return err
-	}
-	extraCodeOutput := bytes.NewBuffer([]byte{})
-	if err := printer.Fprint(extraCodeOutput, token.NewFileSet(), extraCode); err != nil {
-		return err
-	}
-
-	ta.fileData[path].TypeAdjusterData.ParseFunctions = &fieldData.ParseFunctions{
-		Unmarshall:        unmarshallFunctionOutput.String(),
-		UnmarshallImports: unmarshallImports,
-		Marshall:          marshallFunctionOutput.String(),
-		MarshallImports:   marshallImports,
-		ExtraCode:         extraCodeOutput.String(),
-		ExtraImports:      extraImports,
-	}
-	return nil
-}
-
 func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 	typeAdjusterData := ta.fileData[path].TypeAdjusterData
 
@@ -176,7 +131,7 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 			ActiveCheckerNames:  ta.registeredTypeCheckers.GetNames(),
 		}
 	}
-	err = checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.registeredTypeCheckers, ta.codeGenerator)
+	err = checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.codeGenerator)
 	if err != nil {
 		return err
 	}
@@ -192,10 +147,14 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 			return nil
 		}
 		if checker.TypeExpansion() {
-			err := ta.setFunctions(path, checker)
-			if err != nil {
-				return err
-			}
+			//TODO implement whit the new generation method
+			/*
+				err := ta.setFunctions(path, checker)
+				if err != nil {
+					return err
+				}
+
+			*/
 			//TODO return this error instead of setting it directly
 			/*
 				ta.fileData[path].Error = errors.Join(ta.fileData[path].Error, &j2gError.TypeExpansionError{
@@ -212,12 +171,10 @@ func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
 		typeAdjusterData.LastCheckedTimestamp = ta.startTimestampPointer()
 	} else {
 		//TODO put the reset into an extra method
-		ta.fileData[path].TypeAdjusterData.ParseFunctions = nil
 		ta.fileData[path].ActiveType = nil
 		ta.fileData[path].TypeAdjusterData.NameOfActiveTypeAdjuster = nil
 		ta.fileData[path].TypeAdjusterData.CheckerVersion = nil
 		ta.fileData[path].TypeAdjusterData.SetTimestamp = nil
-		ta.fileData[path].TypeAdjusterData.ModFileContents = nil
 		return &typeChecker.NoLongerApplicableCustomTypeError{
 			ActiveTypeChecker: checker.GetName(),
 		}
@@ -230,7 +187,11 @@ func (ta *TypeAdjuster) startTimestampPointer() *int64 {
 	return &i
 }
 
-func (ta *TypeAdjuster) AdjustTypes(path string) error {
+func (ta *TypeAdjuster) AdjustType(path string) (map[fieldData.FilePath]*fieldData.File, ast.Expr, *fieldData.Import, error) {
+	files := make(map[fieldData.FilePath]*fieldData.File)
+	var typeImport *fieldData.Import
+	var replacementExpr ast.Expr
+
 	var runCheckersOnly bool
 	if ta.fileData[path].TypeAdjusterData == nil {
 		ta.fileData[path].TypeAdjusterData = &fieldData.TypeAdjusterData{}
@@ -242,60 +203,70 @@ func (ta *TypeAdjuster) AdjustTypes(path string) error {
 		if ta.checkerExcluded(path, checker) {
 			continue
 		}
-		fmt.Println("#" + path)
-		err := checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.registeredTypeCheckers, ta.codeGenerator)
+		err := checker.SetState(typeAdjusterData.TypeAdjusterData, path, ta.fileData, ta.codeGenerator)
 		// Incompatible TypeAdjusterData should never happen here, as we only call this from the generator, which only
 		// works whit already combined files.
 		if err != nil {
-			return err
+			return nil, nil, nil, err
 		}
 
 		state, err := checker.CouldTypeBeApplied()
 		if err != nil {
-			return err
+			return nil, nil, nil, err
 		}
 		if state == StateApplicable && !runCheckersOnly && !ta.checkOnly {
 			checkerName := checker.GetName()
 			checkerState, err := checker.GetState()
 			if err != nil {
-				return err
+				return nil, nil, nil, err
 			}
-			activeType, err := utils.ExprToString(checker.GetType())
+			replacementExpr, typeImport = checker.GetType()
+
+			activeTypeString, err := utils.ExprToString(replacementExpr)
 			if err != nil {
-				return err
+				return nil, nil, nil, err
 			}
 
-			ta.fileData[path].ActiveType = &activeType
-			ta.fileData[path].ForceSourceType = checker.ForceSourceType()
-
+			ta.fileData[path].ActiveType = &activeTypeString
 			typeAdjusterData.NameOfActiveTypeAdjuster = &checkerName
 			typeAdjusterData.TypeAdjusterData = []json.RawMessage{checkerState}
 			typeAdjusterData.SetTimestamp = ta.startTimestampPointer()
 			typeAdjusterData.LastCheckedTimestamp = ta.startTimestampPointer()
 			typeAdjusterData.CheckerVersion = checker.GetVersion()
-			typeAdjusterData.ModFileContents = checker.GetModFileContents()
 
-			err = ta.setFunctions(path, checker)
-			if err != nil {
-				return err
+			if checker.NeedsMarshaller() {
+				//TODO we need to get, and handle the mod file contents
+				marshall, i, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, replacementExpr))
+				if err != nil {
+					return nil, nil, nil, err
+				}
+
+				files["marshall"] = fieldData.GetGoFile([]ast.Decl{marshall}, i, nil)
+
+				unmarshall, i, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, replacementExpr))
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				files["unmarshall"] = fieldData.GetGoFile([]ast.Decl{unmarshall}, i, nil)
 			}
-
 		} else if state == StateFailed {
 			if ta.fileData[path].TypeAdjusterData == nil {
 				(*ta.fileData[path]).TypeAdjusterData = &fieldData.TypeAdjusterData{}
 			}
 			if ta.fileData[path].TypeAdjusterData.CheckedNonMatchingTypes == nil {
-				(*(*ta.fileData[path]).TypeAdjusterData).CheckedNonMatchingTypes = map[string]int64{}
+				(*(*ta.fileData[path]).TypeAdjusterData).CheckedNonMatchingTypes = map[string]*fieldData.NonMatchingCheckerInfos{}
 			}
-			(*(*ta.fileData[path]).TypeAdjusterData).CheckedNonMatchingTypes[checker.GetName()] = ta.startTime.Unix()
+			(*(*ta.fileData[path]).TypeAdjusterData).CheckedNonMatchingTypes[checker.GetName()] = &fieldData.NonMatchingCheckerInfos{
+				Timestamp: ta.startTime.Unix(),
+				Version:   checker.GetVersion(),
+			}
 		}
 
 		if state == StateApplicable || state == StateUndecided {
 			runCheckersOnly = true
 		}
 	}
-
-	return nil
+	return files, replacementExpr, typeImport, nil
 }
 
 func (ta *TypeAdjuster) checkerExcluded(path string, checker TypeDeterminationFunction) bool {

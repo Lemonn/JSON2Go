@@ -11,15 +11,20 @@ import (
 
 type TypeDeterminationFunction interface {
 	CouldTypeBeApplied() (State, error)
-	GetType() ast.Expr
+	GetType() (ast.Expr, *fieldData.Import)
 	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
 	GetName() string
-	SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error
+	SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
 	GetExtraCode() ([]ast.Decl, []string, error)
+
+	GetSubFiles() (map[string]*fieldData.File, error)
+	NeedsMarshaller() bool
+
 	TypeExpansion() bool
-	ForceSourceType() *string
+
+	ForceSourceType() (*string, bool)
 	GetModFileContents() []*fieldData.ModFileContent
 	GetVersion() *string
 }
@@ -58,7 +63,7 @@ func (t TypeDeterminationFunctions) GenerateHeader() []string {
 	var s []string
 	s = append(s, "// Used TypeAdjusters")
 	for _, adjuster := range t {
-		s = append(s, fmt.Sprintf("// Name: %s Version: %s", adjuster.GetName(), adjuster.GetVersion()))
+		s = append(s, fmt.Sprintf("// Name: %s Version: %s", adjuster.GetName(), *adjuster.GetVersion()))
 	}
 	return s
 }

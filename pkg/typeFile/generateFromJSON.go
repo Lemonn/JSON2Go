@@ -16,7 +16,7 @@ type Parser struct {
 	eaa       bool
 }
 
-func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (map[string]*fieldData.PathData, error) {
+func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (fieldData.FileData, error) {
 	seenTypes := make(map[string]*fieldData.PathData)
 	p := Parser{
 		seenTypes: seenTypes,
