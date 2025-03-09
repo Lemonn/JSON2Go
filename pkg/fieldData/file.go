@@ -84,7 +84,16 @@ func (p Path) String() string {
 	return string(p)
 }
 
-type Files []*File
+type FileClass int
+
+const (
+	FileClassLocal FileClass = iota
+	FileClassGlobal
+	FileClassMarshallFunction
+	FileClassUnMarshallFunction
+	FileClassMarshaller
+	FileClassUnMarshaller
+)
 
 type File struct {
 	File           *ast.File         `json:"file,omitempty"`
@@ -92,40 +101,68 @@ type File struct {
 	Imports        Imports           `json:"extraImports,omitempty"`
 	FileEnding     string            `json:"fileType,omitempty"`
 	ModFileContent []*ModFileContent `json:"modFileContent,omitempty"`
-	Name           *string
+	Name           *string           `json:"name,omitempty"`
+	FileClass      FileClass         `json:"fileClass,omitempty"`
 }
 
-func (f *File) WriteImportsToFile() {
-	var imports []ast.Spec
+func (f *File) WriteImportsToFile(globalPath Path, packageOffset string) error {
+	var alias map[string]struct{}
+	imports := make(map[string]ast.Spec)
+
+	if packageOffset[len(packageOffset)-1:] != "/" {
+		packageOffset += "/"
+	}
+
 	for _, i := range f.Imports {
 		if i == nil {
 			continue
 		}
-		imports = append(imports, &ast.ImportSpec{
-			Name: func() *ast.Ident {
-				if i.Alias != nil {
-					return &ast.Ident{
-						Name: *i.Alias,
+		filePath := i.Path.GetFilePath()
+		if i.NeedsAdjustment {
+			filePath = packageOffset + filePath
+		} else if i.IsGlobal {
+			filePath = i.Path.Prepend(globalPath).GetFilePath()
+		}
+		if i.Alias != nil {
+			if _, ok := alias[*i.Alias]; ok {
+				return errors.New("duplicate import alias")
+			}
+		}
+
+		if _, ok := imports[i.Path.String()]; !ok {
+			imports[i.Path.String()] = &ast.ImportSpec{
+				Name: func() *ast.Ident {
+					if i.Alias != nil {
+						return &ast.Ident{
+							Name: *i.Alias,
+						}
 					}
-				}
-				return nil
-			}(),
-			Path: &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: "\"" + i.Path.String() + "\"",
-			},
-		})
+					return nil
+				}(),
+				Path: &ast.BasicLit{
+					Kind:  token.STRING,
+					Value: "\"" + filePath + "\"",
+				},
+			}
+		}
 	}
 	if len(imports) > 0 {
+		var i []ast.Spec
+		for _, spec := range imports {
+			i = append(i, spec)
+		}
 		f.File.Decls = append([]ast.Decl{&ast.GenDecl{
 			Tok:   token.IMPORT,
-			Specs: imports,
+			Specs: i,
 		},
 		}, f.File.Decls...)
 	}
+	return nil
 }
 
 func (f *File) combine(f1 *File) (*File, error) {
+
+	//TODO correctly combine values and error on incompatible
 	var decls []ast.Decl
 	var imports Imports
 	var mfc []*ModFileContent
@@ -143,7 +180,7 @@ func (f *File) combine(f1 *File) (*File, error) {
 	mfc = append(mfc, f.ModFileContent...)
 	mfc = append(mfc, f1.ModFileContent...)
 
-	return GetGoFile(decls, imports, mfc), nil
+	return GetGoFile(decls, imports, mfc, f.FileClass), nil
 }
 
 func GetEmptyGoFile() *File {
@@ -157,7 +194,7 @@ func GetEmptyGoFile() *File {
 	}
 }
 
-func GetGoFile(decls []ast.Decl, imports Imports, mfc []*ModFileContent) *File {
+func GetGoFile(decls []ast.Decl, imports Imports, mfc []*ModFileContent, class FileClass) *File {
 	f, fs := utils.GetEmptyAstFile("placeholder")
 	f.Decls = decls
 	return &File{

@@ -90,7 +90,7 @@ func (g *Generator) Unmarshall(path fieldData.Path) ([]*fieldData.File, error) {
 	if len(decls) == 0 {
 		return nil, nil
 	}
-	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil)}, nil
+	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil, fieldData.FileClassUnMarshaller)}, nil
 }
 
 func (g *Generator) Marshall(path fieldData.Path) ([]*fieldData.File, error) {
@@ -160,7 +160,7 @@ func (g *Generator) Marshall(path fieldData.Path) ([]*fieldData.File, error) {
 	if len(decls) == 0 {
 		return nil, nil
 	}
-	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil)}, nil
+	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil, fieldData.FileClassMarshaller)}, nil
 }
 
 func (g *Generator) GlobalFiles() []*fieldData.File {
@@ -169,5 +169,5 @@ func (g *Generator) GlobalFiles() []*fieldData.File {
 	decls = append(decls, g.addGetAllErrorsOfTypeFunction())
 	decls = append(decls, g.addAdditionalElementsError()...)
 	decls = append(decls, g.addRequiredFieldMissingError()...)
-	return []*fieldData.File{fieldData.GetGoFile(decls, g.getGlobalImports(), nil)}
+	return []*fieldData.File{fieldData.GetGoFile(decls, g.getGlobalImports(), nil, fieldData.FileClassGlobal)}
 }

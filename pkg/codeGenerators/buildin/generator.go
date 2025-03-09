@@ -101,7 +101,6 @@ func (g *Generator) createFileAtPath(path fieldData.Path) *fieldData.File {
 }
 
 func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldData.File, error) {
-	var currentPath fieldData.Path
 	startPath, err := g.getStartPath()
 	if err != nil {
 		return nil, nil, err
@@ -122,17 +121,21 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 			}
 
 			structFile := g.createFileAtPath(path)
+			structFile.SetPackage(path.GetFieldName())
 			for fieldPath, _ := range g.fileData[path].Types["field"][levelOfArrays] {
 				fp, err := fieldData.NewPath(fieldPath)
+				if err != nil {
+					return nil, nil, err
+				}
 				//Adjust Types
 				subFiles, replacementType, replacementImport, err := g.typeAdjuster.AdjustType(fp)
 				if err != nil {
 					return nil, nil, err
 				}
 				g.stackedMarshaller[path] = g.files[path]
-
-				for filePath, f := range subFiles {
-					g.appendFileAtPath(currentPath.Append(filePath), f)
+				//TODO we need a function, which adjusts not only the path, but all contained imports in one go
+				for subPath, f := range subFiles {
+					g.appendFilesAtPath(fp.GetParentPath().Append(subPath), f)
 				}
 
 				var expr ast.Expr
@@ -146,7 +149,7 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 				if g.IsStruct(fp) && replacementType == nil {
 					pathsToProcess = append(pathsToProcess, fp)
 					structFile.Imports = append(structFile.Imports, &fieldData.Import{
-						Path:            path,
+						Path:            fp,
 						Alias:           nil,
 						NeedsAdjustment: true,
 					})
@@ -209,17 +212,11 @@ func (g *Generator) addJSONMarshaller() error {
 		if err != nil {
 			return err
 		}
-		for _, file := range marshall {
-			file.SetPackage(path.GetFieldName())
-		}
 		g.appendFilesAtPath(path, marshall)
 
 		unmarshall, err := g.marshallGenerator.Unmarshall(path)
 		if err != nil {
 			return err
-		}
-		for _, file := range unmarshall {
-			file.SetPackage(path.GetFieldName())
 		}
 		g.appendFilesAtPath(path, unmarshall)
 	}

@@ -147,7 +147,7 @@ func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.
 			}
 
 			if Type == fieldData.Field {
-				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: path.GetParentFieldName()}, Sel: &ast.Ident{Name: path.GetFieldName()}}})
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: path.GetFieldName()}, Sel: &ast.Ident{Name: path.GetFieldName()}}})
 			} else if Type == fieldData.EmptyArray {
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 			} else if Type == fieldData.EmptyStruct {
@@ -186,6 +186,7 @@ func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.
 	return expr
 }
 
+/*
 func (b *Common) GetAdjustedFieldType(path fieldData.Path) (expr ast.Expr, err error) {
 	if b.fileData[path].TypeAdjusterData != nil && b.fileData[path].ActiveType != nil {
 		expr, err = parser.ParseExpr(*b.fileData[path].ActiveType)
@@ -197,6 +198,8 @@ func (b *Common) GetAdjustedFieldType(path fieldData.Path) (expr ast.Expr, err e
 		return b.GetFieldType(path, false), nil
 	}
 }
+
+*/
 
 func (b *Common) IsStruct(path fieldData.Path) bool {
 	if len(b.fileData[path].Types) == 1 || b.EmptySubtype(path) || b.IsPointer(path) {

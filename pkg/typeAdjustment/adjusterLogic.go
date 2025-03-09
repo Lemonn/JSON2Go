@@ -185,8 +185,8 @@ func (ta *TypeAdjuster) startTimestampPointer() *int64 {
 	return &i
 }
 
-func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path]*fieldData.File, ast.Expr, *fieldData.Import, error) {
-	files := make(map[fieldData.Path]*fieldData.File)
+func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*fieldData.File, ast.Expr, *fieldData.Import, error) {
+	files := make(map[fieldData.Path][]*fieldData.File)
 	var typeImport *fieldData.Import
 	var replacementExpr ast.Expr
 
@@ -238,14 +238,16 @@ func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path]*fie
 				if err != nil {
 					return nil, nil, nil, err
 				}
-
-				files["marshall"] = fieldData.GetGoFile([]ast.Decl{marshall}, i, nil)
+				if _, ok := files[""]; !ok {
+					files[""] = []*fieldData.File{}
+				}
+				files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{marshall}, i, nil, fieldData.FileClassMarshallFunction))
 
 				unmarshall, i, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, replacementExpr))
 				if err != nil {
 					return nil, nil, nil, err
 				}
-				files["unmarshall"] = fieldData.GetGoFile([]ast.Decl{unmarshall}, i, nil)
+				files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{unmarshall}, i, nil, fieldData.FileClassUnMarshallFunction))
 			}
 		} else if state == StateFailed {
 			if ta.fileData[path].TypeAdjusterData == nil {
