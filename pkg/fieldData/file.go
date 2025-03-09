@@ -58,6 +58,10 @@ func (p Path) GetParentPath() Path {
 	}
 }
 
+func (p Path) GetFilePath() string {
+	return strings.ReplaceAll(p.String(), ".", "/")
+}
+
 func (p Path) GetParentFieldName() string {
 	pathElements := strings.Split(string(p), ".")
 	return pathElements[len(pathElements)-2]
@@ -80,7 +84,7 @@ func (p Path) String() string {
 	return string(p)
 }
 
-type Files map[string]*File
+type Files []*File
 
 type File struct {
 	File           *ast.File         `json:"file,omitempty"`
@@ -89,6 +93,36 @@ type File struct {
 	FileEnding     string            `json:"fileType,omitempty"`
 	ModFileContent []*ModFileContent `json:"modFileContent,omitempty"`
 	Name           *string
+}
+
+func (f *File) WriteImportsToFile() {
+	var imports []ast.Spec
+	for _, i := range f.Imports {
+		if i == nil {
+			continue
+		}
+		imports = append(imports, &ast.ImportSpec{
+			Name: func() *ast.Ident {
+				if i.Alias != nil {
+					return &ast.Ident{
+						Name: *i.Alias,
+					}
+				}
+				return nil
+			}(),
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: "\"" + i.Path.String() + "\"",
+			},
+		})
+	}
+	if len(imports) > 0 {
+		f.File.Decls = append([]ast.Decl{&ast.GenDecl{
+			Tok:   token.IMPORT,
+			Specs: imports,
+		},
+		}, f.File.Decls...)
+	}
 }
 
 func (f *File) combine(f1 *File) (*File, error) {

@@ -21,15 +21,15 @@ type TimeTypeChecker struct {
 	fileData              fieldData.FileData
 	codeGenerator         codeGenerators.CodeGenerator
 	version               string
-	currentPath           string
-}
-
-func (t *TimeTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
-	return nil
+	currentPath           fieldData.Path
 }
 
 func (t *TimeTypeChecker) GetVersion() *string {
 	return &t.version
+}
+
+func (t *TimeTypeChecker) NeedsMarshaller() bool {
+	return true
 }
 
 func NewTimeTypeChecker(ignoreYearOnlyStrings bool) *TimeTypeChecker {
@@ -74,7 +74,7 @@ func (t *TimeTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	return typeAdjustment.StateApplicable, nil
 }
 
-func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -101,10 +101,15 @@ func (t *TimeTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 			},
 		},
 	}
-	return functionScaffold, []string{"time"}, nil
+	return functionScaffold, fieldData.Imports{&fieldData.Import{
+		Path:            "time",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	}}, nil
 }
 
-func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -131,11 +136,16 @@ func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 			},
 		},
 	}
-	return functionScaffold, []string{"time"}, nil
+	return functionScaffold, fieldData.Imports{&fieldData.Import{
+		Path:            "time",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	}}, nil
 }
 
-func (t *TimeTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
-	return []ast.Decl{}, nil, nil
+func (t *TimeTypeChecker) GetSubFiles() (map[string]*fieldData.File, error) {
+	return nil, nil
 }
 
 func (t *TimeTypeChecker) TypeExpansion() bool {
@@ -167,7 +177,7 @@ func (t *timeTypeCheckerState) combiner(t1 *timeTypeCheckerState) (*timeTypeChec
 	return &tNew, nil
 }
 
-func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, activeTypeCheckers typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+func (t *TimeTypeChecker) SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error {
 	t.fileData = fileData
 	t.codeGenerator = codeGenerator
 	if states == nil || len(states) == 0 || states[0] == nil {
@@ -205,7 +215,7 @@ func (t *TimeTypeChecker) GetState() (json.RawMessage, error) {
 	return b, nil
 }
 
-func (t *TimeTypeChecker) GetType() ast.Expr {
+func (t *TimeTypeChecker) GetType() (ast.Expr, *fieldData.Import) {
 	return &ast.SelectorExpr{
 		X: &ast.Ident{
 			Name: "time",
@@ -213,14 +223,8 @@ func (t *TimeTypeChecker) GetType() ast.Expr {
 		Sel: &ast.Ident{
 			Name: "Time",
 		},
-	}
+	}, nil
 }
-
-func (t *TimeTypeChecker) GetRequiredImports() []string {
-	return []string{"time"}
-}
-
-func (t *TimeTypeChecker) SetFile(_ *ast.File) {}
 
 func (t *TimeTypeChecker) GetName() string {
 	return "json2go.TimeTypeChecker"

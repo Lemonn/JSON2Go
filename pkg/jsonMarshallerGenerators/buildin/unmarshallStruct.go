@@ -112,6 +112,26 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
 		break
 	}
+	imports := fieldData.Imports{
+		&fieldData.Import{
+			Path:            "encoding/json",
+			Alias:           nil,
+			NeedsAdjustment: false,
+			IsGlobal:        false,
+		},
+		&fieldData.Import{
+			Path:            "errors",
+			Alias:           nil,
+			NeedsAdjustment: false,
+			IsGlobal:        false,
+		},
+		&fieldData.Import{
+			Path:            "",
+			Alias:           &g.alias,
+			NeedsAdjustment: false,
+			IsGlobal:        true,
+		},
+	}
 	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
 		fp, err := fieldData.NewPath(fieldPath)
 		if err != nil {
@@ -284,9 +304,7 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 												Op: token.AND,
 												X: &ast.CompositeLit{
 													Type: &ast.SelectorExpr{
-														X: &ast.Ident{
-															Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
-														},
+														X: &ast.Ident{Name: g.alias},
 														Sel: &ast.Ident{
 															Name: "RequiredFieldMissingError",
 														},
@@ -400,9 +418,7 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 													},
 													Type: &ast.StarExpr{
 														X: &ast.SelectorExpr{
-															X: &ast.Ident{
-																Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
-															},
+															X: &ast.Ident{Name: g.alias},
 															Sel: &ast.Ident{
 																Name: "AdditionalElementsError",
 															},
@@ -424,9 +440,7 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 													},
 													Type: &ast.StarExpr{
 														X: &ast.SelectorExpr{
-															X: &ast.Ident{
-																Name: utils.GetPackageNameFromImportPath(g.globalsImportPath),
-															},
+															X: &ast.Ident{Name: g.alias},
 															Sel: &ast.Ident{
 																Name: "RequiredFieldMissingError",
 															},
@@ -626,7 +640,10 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 								&ast.UnaryExpr{
 									Op: token.AND,
 									X: &ast.CompositeLit{
-										Type: &ast.SelectorExpr{X: &ast.Ident{Name: utils.GetPackageNameFromImportPath(g.globalsImportPath)}, Sel: &ast.Ident{Name: "AdditionalElementsError"}},
+										Type: &ast.SelectorExpr{X: &ast.Ident{
+											Name: g.alias,
+											//Name: utils.GetPackageNameFromImportPath(g.globalsImportPath)
+										}, Sel: &ast.Ident{Name: "AdditionalElementsError"}},
 										Elts: []ast.Expr{
 											&ast.KeyValueExpr{
 												Key: &ast.Ident{
@@ -663,26 +680,6 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 			},
 		},
 	})
-	imports := fieldData.Imports{
-		&fieldData.Import{
-			Path:            "encoding/json",
-			Alias:           nil,
-			NeedsAdjustment: false,
-			IsGlobal:        false,
-		},
-		&fieldData.Import{
-			Path:            "errors",
-			Alias:           nil,
-			NeedsAdjustment: false,
-			IsGlobal:        false,
-		},
-		&fieldData.Import{
-			Path:            "",
-			Alias:           nil,
-			NeedsAdjustment: false,
-			IsGlobal:        true,
-		},
-	}
 	return stmts, imports, nil
 }
 

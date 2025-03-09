@@ -7,11 +7,17 @@ import (
 )
 
 type Generator struct {
-	codeGenerator     codeGenerators.CodeGenerator
-	fileData          fieldData.FileData
-	added             bool
-	structPrefixes    map[string]string
-	globalsImportPath string
+	fileData      fieldData.FileData
+	codeGenerator codeGenerators.CodeGenerator
+	alias         string
+}
+
+func NewGenerator(fileData fieldData.FileData, generator codeGenerators.CodeGenerator) *Generator {
+	return &Generator{
+		fileData:      fileData,
+		codeGenerator: generator,
+		alias:         "globalsTest",
+	}
 }
 
 func (g *Generator) Unmarshall(path fieldData.Path) ([]*fieldData.File, error) {
@@ -81,7 +87,9 @@ func (g *Generator) Unmarshall(path fieldData.Path) ([]*fieldData.File, error) {
 			Body: &ast.BlockStmt{List: stmts},
 		})
 	}
-
+	if len(decls) == 0 {
+		return nil, nil
+	}
 	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil)}, nil
 }
 
@@ -149,7 +157,9 @@ func (g *Generator) Marshall(path fieldData.Path) ([]*fieldData.File, error) {
 			Body: &ast.BlockStmt{List: stmts},
 		})
 	}
-
+	if len(decls) == 0 {
+		return nil, nil
+	}
 	return []*fieldData.File{fieldData.GetGoFile(decls, imports, nil)}, nil
 }
 

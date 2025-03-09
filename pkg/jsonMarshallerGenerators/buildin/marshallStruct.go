@@ -9,17 +9,21 @@ import (
 	"unicode"
 )
 
-func (g *Generator) generateShadowStruct(path fieldData.Path) *ast.DeclStmt {
+func (g *Generator) generateShadowStruct(path fieldData.Path) (*ast.DeclStmt, error) {
 	var localFields []*ast.Field
 	var Level int
 	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
 		break
 	}
 	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
+		fp, err := fieldData.NewPath(fieldPath)
+		if err != nil {
+			return nil, err
+		}
 		localFields = append(localFields, &ast.Field{
-			Names: []*ast.Ident{{Name: fieldPath.GetFieldName()}},
-			Type:  g.codeGenerator.GetFieldType(fieldPath, false),
-			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.fileData[fieldPath].JsonFieldName)},
+			Names: []*ast.Ident{{Name: fp.GetFieldName()}},
+			Type:  g.codeGenerator.GetFieldType(fp, false),
+			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.fileData[fp].JsonFieldName)},
 		})
 	}
 
@@ -39,14 +43,17 @@ func (g *Generator) generateShadowStruct(path fieldData.Path) *ast.DeclStmt {
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fieldData.Imports, error) {
 	var stmts []ast.Stmt
 	required := false
 
-	localStruct := g.generateShadowStruct(path)
+	localStruct, err := g.generateShadowStruct(path)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	stmts = append(stmts, &ast.DeclStmt{
 		Decl: &ast.GenDecl{
@@ -73,13 +80,17 @@ func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fi
 		break
 	}
 	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
-		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fieldPath)
-		if g.fileData[fieldPath].TypeAdjusterData != nil && g.fileData[fieldPath].ActiveType != nil && !g.codeGenerator.IsStruct(fieldPath) {
+		fp, err := fieldData.NewPath(fieldPath)
+		if err != nil {
+			return nil, nil, err
+		}
+		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fp)
+		if g.fileData[fp].TypeAdjusterData != nil && g.fileData[fp].ActiveType != nil && !g.codeGenerator.IsStruct(fp) {
 			required = true
 			if levelOfArrays > 0 {
-				g.marshallHandleArrayField(&stmts, fieldPath)
+				g.marshallHandleArrayField(&stmts, fp)
 			} else {
-				g.marshallHandleField(&stmts, fieldPath)
+				g.marshallHandleField(&stmts, fp)
 			}
 		} else {
 			stmts = append(stmts, &ast.AssignStmt{
@@ -89,7 +100,7 @@ func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fi
 							Name: "lt",
 						},
 						Sel: &ast.Ident{
-							Name: fieldPath.GetFieldName(),
+							Name: fp.GetFieldName(),
 						},
 					},
 				},
@@ -100,7 +111,7 @@ func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fi
 							Name: string(unicode.ToLower([]rune(path.GetFieldName())[0])),
 						},
 						Sel: &ast.Ident{
-							Name: fieldPath.GetFieldName(),
+							Name: fp.GetFieldName(),
 						},
 					},
 				},

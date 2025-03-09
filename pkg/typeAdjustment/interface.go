@@ -17,15 +17,12 @@ type TypeDeterminationFunction interface {
 	GetName() string
 	SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
-	GetExtraCode() ([]ast.Decl, []string, error)
 
 	GetSubFiles() (map[string]*fieldData.File, error)
 	NeedsMarshaller() bool
 
 	TypeExpansion() bool
-
-	ForceSourceType() (*string, bool)
-	GetModFileContents() []*fieldData.ModFileContent
+	ForceSourceType() *string
 	GetVersion() *string
 }
 

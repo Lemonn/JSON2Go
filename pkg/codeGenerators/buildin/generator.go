@@ -8,6 +8,7 @@ import (
 	j2gErrors "github.com/Lemonn/JSON2Go/pkg/errors/combiner"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators"
+	jsonMarshallGen "github.com/Lemonn/JSON2Go/pkg/jsonMarshallerGenerators/buildin"
 	"github.com/Lemonn/JSON2Go/pkg/typeAdjustment"
 	"go/ast"
 	"go/token"
@@ -42,6 +43,9 @@ func NewGenerator(fileData fieldData.FileData, adjuster typeAdjustment.TypeDeter
 		version:           "v0.0.1",
 		name:              "Test",
 	}
+
+	//TODO We should probably get rid of the only dependency that needs the generator (isStruct) and replace it whit a global function
+	s.marshallGenerator = jsonMarshallGen.NewGenerator(fileData, s)
 
 	s.typeAdjuster = typeAdjustment.NewTypeAdjuster(fileData, s, adjuster, s.startTime)
 	return s, nil
@@ -135,10 +139,7 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 				if replacementType != nil {
 					expr = replacementType
 				} else {
-					expr, err = g.GetAdjustedFieldType(fp)
-					if err != nil {
-						return nil, nil, err
-					}
+					expr = g.GetFieldType(fp, false)
 				}
 
 				//If it's a struct and has not been replaced by a custom type, we need to import the type.
@@ -208,11 +209,17 @@ func (g *Generator) addJSONMarshaller() error {
 		if err != nil {
 			return err
 		}
+		for _, file := range marshall {
+			file.SetPackage(path.GetFieldName())
+		}
 		g.appendFilesAtPath(path, marshall)
 
 		unmarshall, err := g.marshallGenerator.Unmarshall(path)
 		if err != nil {
 			return err
+		}
+		for _, file := range unmarshall {
+			file.SetPackage(path.GetFieldName())
 		}
 		g.appendFilesAtPath(path, unmarshall)
 	}
@@ -235,7 +242,8 @@ func (g *Generator) CheckType(path fieldData.Path) error {
 	if pathData.TypeAdjusterData != nil && pathData.TypeAdjusterData.NameOfActiveTypeAdjuster != nil {
 		return g.typeAdjuster.CheckActiveChecker(path, true)
 	} else if pathData.ActiveType != nil {
-		typeString, err := utils.ExprToString(g.GetFieldType(path, true))
+		expr := g.GetFieldType(path, true)
+		typeString, err := utils.ExprToString(expr)
 		if err != nil {
 			return err
 		}
