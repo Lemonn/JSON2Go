@@ -23,7 +23,7 @@ func (b *Common) SetActiveTypeFile(fileData fieldData.FileData) {
 	b.fileData = fileData
 }
 
-func (b *Common) IsPointer(path string) bool {
+func (b *Common) IsPointer(path fieldData.Path) bool {
 	var PointerType bool
 	var Level int
 	if len(b.fileData[path].Types) == 2 || (len(b.fileData[path].Types) == 3 && b.ContainsEmptyType(path)) {
@@ -68,7 +68,7 @@ func (b *Common) IsPointer(path string) bool {
 	return PointerType
 }
 
-func (b *Common) EmptySubtype(path string) bool {
+func (b *Common) EmptySubtype(path fieldData.Path) bool {
 	var EmptySubtype bool
 	var Level int
 	pathData := b.fileData[path]
@@ -122,7 +122,7 @@ func (b *Common) EmptySubtype(path string) bool {
 	return EmptySubtype
 }
 
-func (b *Common) GetFieldType(path string, withoutArray bool) (expr ast.Expr) {
+func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.Expr) {
 	pathData := b.fileData[path]
 	levelOfArrays := math.MaxInt32
 	if withoutArray {
@@ -147,7 +147,7 @@ func (b *Common) GetFieldType(path string, withoutArray bool) (expr ast.Expr) {
 			}
 
 			if Type == fieldData.Field {
-				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: utils.GetFieldName(path)}, Sel: &ast.Ident{Name: utils.GetFieldName(path)}}})
+				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: path.GetParentFieldName()}, Sel: &ast.Ident{Name: path.GetFieldName()}}})
 			} else if Type == fieldData.EmptyArray {
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 			} else if Type == fieldData.EmptyStruct {
@@ -186,7 +186,7 @@ func (b *Common) GetFieldType(path string, withoutArray bool) (expr ast.Expr) {
 	return expr
 }
 
-func (b *Common) GetAdjustedFieldType(path string) (expr ast.Expr, err error) {
+func (b *Common) GetAdjustedFieldType(path fieldData.Path) (expr ast.Expr, err error) {
 	if b.fileData[path].TypeAdjusterData != nil && b.fileData[path].ActiveType != nil {
 		expr, err = parser.ParseExpr(*b.fileData[path].ActiveType)
 		if err != nil {
@@ -198,7 +198,7 @@ func (b *Common) GetAdjustedFieldType(path string) (expr ast.Expr, err error) {
 	}
 }
 
-func (b *Common) IsStruct(path string) bool {
+func (b *Common) IsStruct(path fieldData.Path) bool {
 	if len(b.fileData[path].Types) == 1 || b.EmptySubtype(path) || b.IsPointer(path) {
 		Type := b.GetType(path)
 		if len(b.fileData[path].Types[Type]) == 1 {
@@ -215,7 +215,7 @@ func (b *Common) IsStruct(path string) bool {
 	}
 }
 
-func (b *Common) GetLevelOfArrays(path string) int {
+func (b *Common) GetLevelOfArrays(path fieldData.Path) int {
 	levelOfArrays := math.MaxInt32
 	for Type, _ := range b.fileData[path].Types {
 		for i, _ := range b.fileData[path].Types[Type] {
@@ -227,7 +227,7 @@ func (b *Common) GetLevelOfArrays(path string) int {
 	return levelOfArrays
 }
 
-func (b *Common) ContainsEmptyType(path string) bool {
+func (b *Common) ContainsEmptyType(path fieldData.Path) bool {
 	if _, ok := b.fileData[path].Types[fieldData.EmptyStruct]; ok {
 		return true
 	} else if _, ok := b.fileData[path].Types[fieldData.EmptyArray]; ok {
@@ -236,7 +236,7 @@ func (b *Common) ContainsEmptyType(path string) bool {
 	return false
 }
 
-func (b *Common) GetTypeByPath(path string) fieldData.Type {
+func (b *Common) GetTypeByPath(path fieldData.Path) fieldData.Type {
 	for Type, _ := range b.fileData[path].Types {
 		if len(b.fileData[path].Types) == 1 {
 			return Type
@@ -247,7 +247,7 @@ func (b *Common) GetTypeByPath(path string) fieldData.Type {
 	return fieldData.Unsupported
 }
 
-func (b *Common) GetType(path string) fieldData.Type {
+func (b *Common) GetType(path fieldData.Path) fieldData.Type {
 	pathData := b.fileData[path]
 	for Type, _ := range pathData.Types {
 		if len(pathData.Types) == 1 {
@@ -259,18 +259,18 @@ func (b *Common) GetType(path string) fieldData.Type {
 	return fieldData.Unsupported
 }
 
-func (b *Common) ContainsPointerType(path string) bool {
+func (b *Common) ContainsPointerType(path fieldData.Path) bool {
 	if _, ok := b.fileData[path].Types[fieldData.Null]; ok {
 		return true
 	}
 	return false
 }
 
-func (b *Common) Omitempty(path string) bool {
-	if utils.IsRootPath(path) {
+func (b *Common) Omitempty(path fieldData.Path) bool {
+	if path.IsRootPath() {
 		return false
 	} else {
-		parentPath := utils.GetParentPath(path)
+		parentPath := path.GetParentPath()
 		LevelOfArrays := b.GetLevelOfArrays(path)
 		if _, ok := b.fileData[parentPath].Types[fieldData.EmptyStruct]; ok {
 			if _, ok := b.fileData[parentPath].Types[fieldData.EmptyStruct][LevelOfArrays]; ok {
@@ -295,7 +295,7 @@ func (b *Common) Omitempty(path string) bool {
 	}
 }
 
-func (b *Common) GetJsonTag(path string) string {
+func (b *Common) GetJsonTag(path fieldData.Path) string {
 	return fmt.Sprintf("`json:\"%s%s\"`", b.fileData[path].JsonFieldName, func() string {
 		if b.Omitempty(path) {
 			return ",omitempty"
@@ -305,12 +305,12 @@ func (b *Common) GetJsonTag(path string) string {
 	}())
 }
 
-func (b *Common) IsBasicType(path string) bool {
+func (b *Common) IsBasicType(path fieldData.Path) bool {
 	d, _, _ := b.IsBasicTypeWhitDetails(path)
 	return d
 }
 
-func (b *Common) IsBasicTypeWhitDetails(path string) (bool, int, fieldData.Type) {
+func (b *Common) IsBasicTypeWhitDetails(path fieldData.Path) (bool, int, fieldData.Type) {
 	var setType *fieldData.Type
 	var setLevel *int
 

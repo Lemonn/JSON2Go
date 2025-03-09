@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+	"unicode"
 )
 
 type Path string
@@ -33,6 +34,17 @@ func (p Path) IsRootPath() bool {
 	return false
 }
 
+func (p Path) GetRoot() Path {
+	return Path(strings.Split(string(p), ".")[0])
+}
+
+func (p Path) IsGlobal() bool {
+	if len(strings.Split(string(p), ".")) == 1 {
+		return true
+	}
+	return false
+}
+
 func (p Path) GetParentPath() Path {
 	pathElements := strings.Split(string(p), ".")
 	if len(pathElements) > 1 {
@@ -52,13 +64,48 @@ func (p Path) GetFieldName() string {
 	return pathElements[len(pathElements)-1]
 }
 
+func (p Path) GetRune() string {
+	return string(unicode.ToLower([]rune(p.GetFieldName())[0]))
+}
+
+func (p Path) GetParentRune() string {
+	return string(unicode.ToLower([]rune(p.GetParentPath())[0]))
+}
+
+func (p Path) String() string {
+	return string(p)
+}
+
+type Files map[string]*File
+
 type File struct {
 	File           *ast.File         `json:"file,omitempty"`
 	FSet           *token.FileSet    `json:"fSet,omitempty"`
 	Imports        Imports           `json:"extraImports,omitempty"`
 	FileEnding     string            `json:"fileType,omitempty"`
 	ModFileContent []*ModFileContent `json:"modFileContent,omitempty"`
-	Name           string
+	Name           *string
+}
+
+func (f *File) combine(f1 *File) (*File, error) {
+	var decls []ast.Decl
+	var imports Imports
+	var mfc []*ModFileContent
+
+	if f.FileEnding != f1.FileEnding {
+		return nil, errors.New("file endings do not match")
+	}
+
+	decls = append(decls, f.File.Decls...)
+	decls = append(decls, f1.File.Decls...)
+
+	imports = append(imports, f.Imports...)
+	imports = append(imports, f1.Imports...)
+
+	mfc = append(mfc, f.ModFileContent...)
+	mfc = append(mfc, f1.ModFileContent...)
+
+	return GetGoFile(decls, imports, mfc), nil
 }
 
 func GetEmptyGoFile() *File {
@@ -125,6 +172,7 @@ type Import struct {
 	Path            Path    `json:"name"`
 	Alias           *string `json:"alias"`
 	NeedsAdjustment bool    `json:"needsAdjustment"`
+	IsGlobal        bool    `json:"isGlobal"`
 }
 
 func (i *Import) AdjustPathIfNeeded(path Path) {

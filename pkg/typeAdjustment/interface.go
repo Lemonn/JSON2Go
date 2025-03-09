@@ -12,10 +12,10 @@ import (
 type TypeDeterminationFunction interface {
 	CouldTypeBeApplied() (State, error)
 	GetType() (ast.Expr, *fieldData.Import)
-	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
-	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error)
+	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error)
+	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error)
 	GetName() string
-	SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error
+	SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
 	GetExtraCode() ([]ast.Decl, []string, error)
 

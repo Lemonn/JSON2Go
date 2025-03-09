@@ -400,25 +400,6 @@ func GetFieldType(seenTypes map[string]*fieldData.PathData, path string) (expr a
 
 */
 
-func GetFieldName(path string) string {
-	pathElements := strings.Split(path, ".")
-	return pathElements[len(pathElements)-1]
-}
-
-func GetParentPath(path string) string {
-	pathElements := strings.Split(path, ".")
-	if len(pathElements) > 1 {
-		return strings.Join(pathElements[:len(pathElements)-1], ".")
-	} else {
-		return path
-	}
-}
-
-func GetParentFieldName(path string) string {
-	pathElements := strings.Split(path, ".")
-	return pathElements[len(pathElements)-2]
-}
-
 func GetPackageNameFromImportPath(importPath string) string {
 	pathElements := strings.Split(importPath, "/")
 	return pathElements[len(pathElements)-1]

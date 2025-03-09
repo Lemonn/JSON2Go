@@ -2,29 +2,30 @@ package codeGenerators
 
 import (
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
-	"github.com/google/uuid"
 	"go/ast"
+	"golang.org/x/mod/modfile"
 )
 
 type CodeGenerator interface {
 	GetName() string
 	GetVersion() string
 	SetActiveTypeFile(fileData fieldData.FileData)
-	Generate() (map[string]*fieldData.File, error)
-	StoreState() (uuid.UUID, error)
-	ResetState(stateID uuid.UUID) error
-	DeleteState(stateID uuid.UUID) error
+	Generate() (map[fieldData.Path][]*fieldData.File, []*fieldData.File, error)
+	GenerateGoMod(name string) (*modfile.File, error)
+	//StoreState() (uuid.UUID, error)
+	//ResetState(stateID uuid.UUID) error
+	//DeleteState(stateID uuid.UUID) error
 	//GetRegisteredTypeCheckers() typeAdjustment.TypeDeterminationFunctions
 
 	//Clone could replace StoreState and ResetState by simply cloning the CodeGenerator
 	Clone() CodeGenerator
 
-	GetFieldType(path string, withoutArray bool) (expr ast.Expr)
-	IsStruct(path string) bool
-	IsPointer(path string) bool
-	GetType(path string) fieldData.Type
-	GetLevelOfArrays(path string) int
-	CheckType(path string) error
-	IsBasicType(path string) bool
-	IsBasicTypeWhitDetails(path string) (bool, int, fieldData.Type)
+	GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.Expr)
+	IsStruct(path fieldData.Path) bool
+	IsPointer(path fieldData.Path) bool
+	GetType(path fieldData.Path) fieldData.Type
+	GetLevelOfArrays(path fieldData.Path) int
+	CheckType(path fieldData.Path) error
+	IsBasicType(path fieldData.Path) bool
+	IsBasicTypeWhitDetails(path fieldData.Path) (bool, int, fieldData.Type)
 }
