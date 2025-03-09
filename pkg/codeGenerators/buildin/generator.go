@@ -119,8 +119,9 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 
 			structFile := g.createFileAtPath(path)
 			for fieldPath, _ := range g.fileData[path].Types["field"][levelOfArrays] {
+				fp, err := fieldData.NewPath(fieldPath)
 				//Adjust Types
-				subFiles, replacementType, replacementImport, err := g.typeAdjuster.AdjustType(fieldPath)
+				subFiles, replacementType, replacementImport, err := g.typeAdjuster.AdjustType(fp)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -134,15 +135,15 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 				if replacementType != nil {
 					expr = replacementType
 				} else {
-					expr, err = g.GetAdjustedFieldType(fieldPath)
+					expr, err = g.GetAdjustedFieldType(fp)
 					if err != nil {
 						return nil, nil, err
 					}
 				}
 
 				//If it's a struct and has not been replaced by a custom type, we need to import the type.
-				if g.IsStruct(fieldPath) && replacementType == nil {
-					pathsToProcess = append(pathsToProcess, fieldPath)
+				if g.IsStruct(fp) && replacementType == nil {
+					pathsToProcess = append(pathsToProcess, fp)
 					structFile.Imports = append(structFile.Imports, &fieldData.Import{
 						Path:            path,
 						Alias:           nil,
@@ -152,11 +153,11 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 					structFile.Imports = append(structFile.Imports, replacementImport)
 				}
 
-				g.fileData[fieldPath].Active = true
+				g.fileData[fp].Active = true
 				field := &ast.Field{
-					Names: []*ast.Ident{{Name: fieldPath.GetFieldName()}},
+					Names: []*ast.Ident{{Name: fp.GetFieldName()}},
 					Type:  expr,
-					Tag:   &ast.BasicLit{Kind: token.STRING, Value: g.GetJsonTag(fieldPath)},
+					Tag:   &ast.BasicLit{Kind: token.STRING, Value: g.GetJsonTag(fp)},
 				}
 				fields = append(fields, field)
 			}

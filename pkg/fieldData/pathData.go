@@ -143,4 +143,4 @@ func (p *PathData) MarshalJSON() ([]byte, error) {
 	return json.Marshal(localType)
 }
 
-type FileData map[string]*PathData
+type FileData map[Path]*PathData

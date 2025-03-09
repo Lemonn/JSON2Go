@@ -11,6 +11,10 @@ import (
 
 type Path string
 
+func NewPath(s string) (Path, error) {
+	return Path(s), nil
+}
+
 func (p Path) PrependElement(element string) Path {
 	return Path(element + "." + string(p))
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/errors/typeChecker"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
-	"strings"
 	"time"
 )
 
@@ -38,15 +37,14 @@ func (ta *TypeAdjuster) GetFileHeader() []string {
 	return ta.registeredTypeCheckers.GenerateHeader()
 }
 
-func (ta *TypeAdjuster) SetActiveTypeFile(fileData map[string]*fieldData.PathData) {
+func (ta *TypeAdjuster) SetActiveTypeFile(fileData fieldData.FileData) {
 	ta.fileData = fileData
 }
 
-func (ta *TypeAdjuster) getUnmarshallScaffold(path string, replacementExpr ast.Expr) *ast.FuncDecl {
-	pathElements := strings.Split(path, ".")
+func (ta *TypeAdjuster) getUnmarshallScaffold(path fieldData.Path, replacementExpr ast.Expr) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
-			Name: "UnMarshall" + pathElements[len(pathElements)-1],
+			Name: "UnMarshall" + path.GetFieldName(),
 		},
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
@@ -80,10 +78,10 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path string, replacementExpr ast.E
 	}
 }
 
-func (ta *TypeAdjuster) getMarshallScaffold(path string, replacementExpr ast.Expr) *ast.FuncDecl {
+func (ta *TypeAdjuster) getMarshallScaffold(path fieldData.Path, replacementExpr ast.Expr) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
-			Name: "Marshall" + utils.GetFieldName(path),
+			Name: "Marshall" + path.GetFieldName(),
 		},
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
@@ -117,7 +115,7 @@ func (ta *TypeAdjuster) getMarshallScaffold(path string, replacementExpr ast.Exp
 	}
 }
 
-func (ta *TypeAdjuster) CheckActiveChecker(path string, checkOnly bool) error {
+func (ta *TypeAdjuster) CheckActiveChecker(path fieldData.Path, checkOnly bool) error {
 	typeAdjusterData := ta.fileData[path].TypeAdjusterData
 
 	if !(ta.fileData[path].TypeAdjusterData != nil && ta.fileData[path].TypeAdjusterData.NameOfActiveTypeAdjuster != nil) {
@@ -187,8 +185,8 @@ func (ta *TypeAdjuster) startTimestampPointer() *int64 {
 	return &i
 }
 
-func (ta *TypeAdjuster) AdjustType(path string) (map[fieldData.FilePath]*fieldData.File, ast.Expr, *fieldData.Import, error) {
-	files := make(map[fieldData.FilePath]*fieldData.File)
+func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path]*fieldData.File, ast.Expr, *fieldData.Import, error) {
+	files := make(map[fieldData.Path]*fieldData.File)
 	var typeImport *fieldData.Import
 	var replacementExpr ast.Expr
 
@@ -269,7 +267,7 @@ func (ta *TypeAdjuster) AdjustType(path string) (map[fieldData.FilePath]*fieldDa
 	return files, replacementExpr, typeImport, nil
 }
 
-func (ta *TypeAdjuster) checkerExcluded(path string, checker TypeDeterminationFunction) bool {
+func (ta *TypeAdjuster) checkerExcluded(path fieldData.Path, checker TypeDeterminationFunction) bool {
 	if ta.fileData[path].TypeAdjusterData != nil {
 		//Check if excluded by user
 		if ta.fileData[path].TypeAdjusterData.ExcludedTypeCheckers != nil {

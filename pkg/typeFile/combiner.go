@@ -41,7 +41,7 @@ func (c *Combiner) InterfaceReplacement(p, p1 *fieldData.PathData) bool {
 	return false
 }
 
-func (c *Combiner) processStackedTypeChecks(stackedTypeChecks map[string]struct{}, fileData fieldData.FileData) error {
+func (c *Combiner) processStackedTypeChecks(stackedTypeChecks map[fieldData.Path]struct{}, fileData fieldData.FileData) error {
 	c.codeGenerator.SetActiveTypeFile(fileData)
 	for path := range stackedTypeChecks {
 		err := c.codeGenerator.CheckType(path)
@@ -62,12 +62,12 @@ func NewCombiner(codeGenerator codeGenerators.CodeGenerator, startTime time.Time
 
 func (c *Combiner) CombineFileDetails(fileDetails FileDetails) (fieldData.FileData, error) {
 	sort.Sort(fileDetails)
-	stackedTypeChecks := make(map[string]struct{})
+	stackedTypeChecks := make(map[fieldData.Path]struct{})
 	for {
 		if len(fileDetails) == 1 {
 			break
 		}
-		paths := make(map[string][]*fieldData.PathData)
+		paths := make(map[fieldData.Path][]*fieldData.PathData)
 		combined := make(fieldData.FileData)
 		for path, data := range fileDetails[0].FileData {
 			if _, ok := paths[path]; !ok {
@@ -88,7 +88,7 @@ func (c *Combiner) CombineFileDetails(fileDetails FileDetails) (fieldData.FileDa
 				combined[path] = data[0]
 			} else {
 				var oldParentSeenCounter int
-				if v, ok := fileDetails[0].FileData[utils.GetParentPath(path)]; ok {
+				if v, ok := fileDetails[0].FileData[path.GetParentPath()]; ok {
 					oldParentSeenCounter = v.SeenCounter
 				}
 				combinedPathData, st, err := c.combinePathData(data[0], data[1], path, oldParentSeenCounter)
@@ -114,8 +114,8 @@ func (c *Combiner) CombineFileDetails(fileDetails FileDetails) (fieldData.FileDa
 }
 
 // TODO only return on hard errors, write all soft errors to the file
-func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path string, oldParentSeenCounter int) (*fieldData.PathData, map[string]struct{}, error) {
-	stackedTypeChecks := make(map[string]struct{})
+func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path fieldData.Path, oldParentSeenCounter int) (*fieldData.PathData, map[fieldData.Path]struct{}, error) {
+	stackedTypeChecks := make(map[fieldData.Path]struct{})
 	newP := fieldData.PathData{Types: make(map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails)}
 
 	//Combine Types

@@ -11,15 +11,14 @@ import (
 )
 
 type Parser struct {
-	seenTypes map[string]*fieldData.PathData
+	fileData  fieldData.FileData
 	startTime time.Time
 	eaa       bool
 }
 
-func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (fieldData.FileData, error) {
-	seenTypes := make(map[string]*fieldData.PathData)
+func GenerateTypeFile(jsonData []byte, structName fieldData.Path, externalizeAnonymousArray bool) (fieldData.FileData, error) {
 	p := Parser{
-		seenTypes: seenTypes,
+		fileData:  make(fieldData.FileData),
 		startTime: time.Now(),
 		eaa:       externalizeAnonymousArray,
 	}
@@ -40,7 +39,7 @@ func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousAr
 		}
 
 	*/
-	return p.seenTypes, err
+	return p.fileData, err
 }
 
 //TODO this should be moved into the codeGenerator, as it'S only up to it how it handles such a case
@@ -48,13 +47,13 @@ func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousAr
 func (p *Parser) externalizeAnonymousArray(structName string) {
 	if p.codeGenerator.IsStruct(structName) {
 		var levelOfArrays int
-		for levelOfArrays, _ = range p.seenTypes[structName].Types["field"] {
+		for levelOfArrays, _ = range p.fileData[structName].Types["field"] {
 			break
 		}
 		if levelOfArrays > 0 {
-			p.seenTypes[structName+".AnonymousArray"] = p.seenTypes[structName]
+			p.fileData[structName+".AnonymousArray"] = p.fileData[structName]
 
-			p.seenTypes[structName] = &fieldData.PathData{
+			p.fileData[structName] = &fieldData.PathData{
 				Types:                   map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
 				JsonFieldName:           "",
 				TypeAdjusterData:        nil,
@@ -63,9 +62,9 @@ func (p *Parser) externalizeAnonymousArray(structName string) {
 				ForceSourceType:         nil,
 				DirectToForceSourceType: false,
 			}
-			p.seenTypes[structName].Types[fieldData.Field] = map[int]map[string]*fieldData.ValueDetails{}
-			p.seenTypes[structName].Types[fieldData.Field][levelOfArrays] = make(map[string]*fieldData.ValueDetails)
-			p.seenTypes[structName].Types[fieldData.Field][levelOfArrays][structName+".AnonymousArray"] = &fieldData.ValueDetails{
+			p.fileData[structName].Types[fieldData.Field] = map[int]map[string]*fieldData.ValueDetails{}
+			p.fileData[structName].Types[fieldData.Field][levelOfArrays] = make(map[string]*fieldData.ValueDetails)
+			p.fileData[structName].Types[fieldData.Field][levelOfArrays][structName+".AnonymousArray"] = &fieldData.ValueDetails{
 				Count:              0,
 				FirstSeenTimestamp: 0,
 				LastSeenTimestamp:  0,
@@ -76,7 +75,7 @@ func (p *Parser) externalizeAnonymousArray(structName string) {
 
 */
 
-func (p *Parser) codeGen(jsonData interface{}, path string, depth int) error {
+func (p *Parser) codeGen(jsonData interface{}, path fieldData.Path, depth int) error {
 	switch result := jsonData.(type) {
 	case map[string]interface{}:
 		err := p.processStruct(result, path, depth)
@@ -98,24 +97,25 @@ func (p *Parser) codeGen(jsonData interface{}, path string, depth int) error {
 }
 
 // Processes JSON-Struct elements
-func (p *Parser) processStruct(structData map[string]interface{}, path string, depth int) error {
-	if _, ok := p.seenTypes[path]; !ok {
-		p.seenTypes[path] = &fieldData.PathData{}
+func (p *Parser) processStruct(structData map[string]interface{}, path fieldData.Path, depth int) error {
+	if _, ok := p.fileData[path]; !ok {
+		p.fileData[path] = &fieldData.PathData{}
 	}
-	p.seenTypes[path].SeenCounter++
+	p.fileData[path].SeenCounter++
 	for fieldName, field := range structData {
-		p.setTypeAtLevel(path, fieldData.Field, depth, path+"."+utils.JsonNameToGoName(fieldName))
-		p.seenTypes[path].IntroductionCount = p.seenTypes[path].SeenCounter - 1
-		p.seenTypes[path].LastSeenTimestamp = p.startTime.Unix()
-		if p.seenTypes[path].FirstSeenTimestamp == 0 {
-			p.seenTypes[path].FirstSeenTimestamp = p.startTime.Unix()
+		localPath := fieldData.Path(path.String() + "." + utils.JsonNameToGoName(fieldName))
+		p.setTypeAtLevel(path, fieldData.Field, depth, localPath.String())
+		p.fileData[path].IntroductionCount = p.fileData[path].SeenCounter - 1
+		p.fileData[path].LastSeenTimestamp = p.startTime.Unix()
+		if p.fileData[path].FirstSeenTimestamp == 0 {
+			p.fileData[path].FirstSeenTimestamp = p.startTime.Unix()
 		}
-		if _, ok := p.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)]; !ok {
-			p.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)] = &fieldData.PathData{JsonFieldName: fieldName}
+		if _, ok := p.fileData[localPath]; !ok {
+			p.fileData[fieldData.Path(string(path)+"."+utils.JsonNameToGoName(fieldName))] = &fieldData.PathData{JsonFieldName: fieldName}
 		} else {
-			p.seenTypes[path+"."+utils.JsonNameToGoName(fieldName)].JsonFieldName = fieldName
+			p.fileData[localPath].JsonFieldName = fieldName
 		}
-		err := p.codeGen(field, path+"."+utils.JsonNameToGoName(fieldName), 0)
+		err := p.codeGen(field, localPath, 0)
 		if err != nil {
 			return err
 		}
@@ -127,7 +127,7 @@ func (p *Parser) processStruct(structData map[string]interface{}, path string, d
 }
 
 // Processes JSON-Array elements
-func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) error {
+func (p *Parser) processSlice(sliceData []interface{}, path fieldData.Path, depth int) error {
 	var err error
 	depth++
 	for _, i := range sliceData {
@@ -161,11 +161,11 @@ func (p *Parser) processSlice(sliceData []interface{}, path string, depth int) e
 }
 
 // Processes JSON-Field elements
-func (p *Parser) processField(field interface{}, path string, depth int) error {
-	if _, ok := p.seenTypes[path]; !ok {
-		p.seenTypes[path] = &fieldData.PathData{}
+func (p *Parser) processField(field interface{}, path fieldData.Path, depth int) error {
+	if _, ok := p.fileData[path]; !ok {
+		p.fileData[path] = &fieldData.PathData{}
 	}
-	p.seenTypes[path].SeenCounter++
+	p.fileData[path].SeenCounter++
 	var fieldValue string
 	switch t := field.(type) {
 	case float64:
@@ -190,31 +190,31 @@ func (p *Parser) processField(field interface{}, path string, depth int) error {
 	return nil
 }
 
-func (p *Parser) setTypeAtLevel(path string, Type fieldData.Type, Depth int, value string) {
+func (p *Parser) setTypeAtLevel(path fieldData.Path, Type fieldData.Type, Depth int, value string) {
 	valueDetails := &fieldData.ValueDetails{
 		Count:              1,
 		FirstSeenTimestamp: p.startTime.Unix(),
 		LastSeenTimestamp:  p.startTime.Unix(),
 	}
-	if p.seenTypes == nil {
-		p.seenTypes = map[string]*fieldData.PathData{}
+	if p.fileData == nil {
+		p.fileData = make(fieldData.FileData)
 	}
-	if v, ok := p.seenTypes[path]; !ok {
-		p.seenTypes[path] = &fieldData.PathData{
+	if v, ok := p.fileData[path]; !ok {
+		p.fileData[path] = &fieldData.PathData{
 			Types: map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{},
 		}
 	} else if v.Types == nil {
-		p.seenTypes[path].Types = map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{}
+		p.fileData[path].Types = map[fieldData.Type]map[int]map[string]*fieldData.ValueDetails{}
 	}
-	if _, ok := p.seenTypes[path].Types[Type]; !ok {
-		p.seenTypes[path].Types[Type] = map[int]map[string]*fieldData.ValueDetails{}
+	if _, ok := p.fileData[path].Types[Type]; !ok {
+		p.fileData[path].Types[Type] = map[int]map[string]*fieldData.ValueDetails{}
 	}
-	if _, ok := p.seenTypes[path].Types[Type][Depth]; !ok {
-		p.seenTypes[path].Types[Type][Depth] = map[string]*fieldData.ValueDetails{}
+	if _, ok := p.fileData[path].Types[Type][Depth]; !ok {
+		p.fileData[path].Types[Type][Depth] = map[string]*fieldData.ValueDetails{}
 	}
-	if _, ok := p.seenTypes[path].Types[Type][Depth][value]; !ok {
-		p.seenTypes[path].Types[Type][Depth][value] = valueDetails
+	if _, ok := p.fileData[path].Types[Type][Depth][value]; !ok {
+		p.fileData[path].Types[Type][Depth][value] = valueDetails
 	} else {
-		p.seenTypes[path].Types[Type][Depth][value] = p.seenTypes[path].Types[Type][Depth][value].Combine(valueDetails)
+		p.fileData[path].Types[Type][Depth][value] = p.fileData[path].Types[Type][Depth][value].Combine(valueDetails)
 	}
 }
