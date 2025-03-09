@@ -1,24 +1,13 @@
+//go:build test
+// +build test
+
 package marshaller
 
 import (
 	"github.com/Lemonn/JSON2Go/internal/utils"
-	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
-	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"unicode"
 )
-
-type Generator struct {
-	fileData      fieldData.FileData
-	codeGenerator codeGenerators.CodeGenerator
-}
-
-func NewGenerator(fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) *Generator {
-	return &Generator{
-		fileData:      fileData,
-		codeGenerator: codeGenerator,
-	}
-}
 
 func (g *Generator) GetGlobalFunctions() []ast.Decl {
 	var decls []ast.Decl

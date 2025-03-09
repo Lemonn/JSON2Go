@@ -1,14 +1,15 @@
-package unmarshaller
+package buildin
 
 import (
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/token"
 	"unicode"
 )
 
 // Handles the case where we have an array of non struct type
-func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
+func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, fieldData.Imports, error) {
 	var stmts []ast.Stmt
 	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
 	//Content of the nested range statement
@@ -41,7 +42,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 			Rhs: []ast.Expr{
 				&ast.CallExpr{
 					Fun: &ast.Ident{
-						Name: "UnMarshall" + utils.GetFieldName(path),
+						Name: "UnMarshall" + path.GetFieldName(),
 					},
 					Args: []ast.Expr{
 						&ast.Ident{
@@ -73,7 +74,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 				},
 			},
 		},
-		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0]))}}, &ast.Ident{Name: "result"}, "index"),
+		utils.GenerateAppendStatement(levelOfArrays-1, 0, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(path.GetFieldName())[0]))}}, &ast.Ident{Name: "result"}, "index"),
 	}
 
 	stmts = append(stmts, &ast.DeclStmt{
@@ -162,7 +163,7 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 			},
 		},
 	})
-	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(utils.GetFieldName(path))[0]))}}, g.codeGenerator.GetFieldType(path, true)))
+	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: path.GetRune()}}, g.codeGenerator.GetFieldType(path, true)))
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.Ident{
@@ -171,5 +172,10 @@ func (g *Generator) arrayGenerator(path string) ([]ast.Stmt, []string, error) {
 		},
 	})
 
-	return stmts, []string{"encoding/json"}, nil
+	return stmts, fieldData.Imports{&fieldData.Import{
+		Path:            "encoding/json",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	}}, nil
 }

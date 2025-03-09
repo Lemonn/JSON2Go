@@ -1,16 +1,33 @@
-package unmarshaller
+package buildin
 
 import (
+	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"go/token"
 )
 
-func (g *Generator) getGlobalImports() []string {
-	return []string{
-		"encoding/json",
-		"errors",
-		"fmt",
-	}
+func (g *Generator) getGlobalImports() fieldData.Imports {
+	var imports fieldData.Imports
+
+	imports = append(imports, &fieldData.Import{
+		Path:            "encoding/json",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	})
+	imports = append(imports, &fieldData.Import{
+		Path:            "errors",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	})
+	imports = append(imports, &fieldData.Import{
+		Path:            "fmt",
+		Alias:           nil,
+		NeedsAdjustment: false,
+		IsGlobal:        false,
+	})
+	return imports
 }
 
 func (g *Generator) addCheckForFirstErrorNotOfTypeTFunction() ast.Decl {
@@ -1204,228 +1221,4 @@ func (g *Generator) addRequiredFieldMissingError() []ast.Decl {
 		},
 	})
 	return decls
-}
-
-var _ = &ast.File{
-	Package: 1,
-	Name: &ast.Ident{
-		Name: "main",
-	},
-	Decls: []ast.Decl{
-		&ast.FuncDecl{
-			Recv: &ast.FieldList{
-				List: []*ast.Field{
-					&ast.Field{
-						Names: []*ast.Ident{
-							&ast.Ident{
-								Name: "e",
-							},
-						},
-						Type: &ast.StarExpr{
-							X: &ast.Ident{
-								Name: "RequiredFieldMissingError",
-							},
-						},
-					},
-				},
-			},
-			Name: &ast.Ident{
-				Name: "Error",
-			},
-			Type: &ast.FuncType{
-				Params: &ast.FieldList{},
-				Results: &ast.FieldList{
-					List: []*ast.Field{
-						&ast.Field{
-							Type: &ast.Ident{
-								Name: "string",
-							},
-						},
-					},
-				},
-			},
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.IfStmt{
-						Cond: &ast.BinaryExpr{
-							X: &ast.Ident{
-								Name: "err",
-							},
-							Op: token.NEQ,
-							Y: &ast.Ident{
-								Name: "nil",
-							},
-						},
-						Body: &ast.BlockStmt{
-							List: []ast.Stmt{
-								&ast.DeclStmt{
-									Decl: &ast.GenDecl{
-										Tok: token.VAR,
-										Specs: []ast.Spec{
-											&ast.ValueSpec{
-												Names: []*ast.Ident{
-													&ast.Ident{
-														Name: "additionalElementsError",
-													},
-												},
-												Type: &ast.StarExpr{
-													X: &ast.SelectorExpr{
-														X: &ast.Ident{
-															Name: "Globals",
-														},
-														Sel: &ast.Ident{
-															Name: "AdditionalElementsError",
-														},
-													},
-												},
-											},
-										},
-									},
-								},
-								&ast.DeclStmt{
-									Decl: &ast.GenDecl{
-										Tok: token.VAR,
-										Specs: []ast.Spec{
-											&ast.ValueSpec{
-												Names: []*ast.Ident{
-													&ast.Ident{
-														Name: "requiredFieldMissingError",
-													},
-												},
-												Type: &ast.StarExpr{
-													X: &ast.SelectorExpr{
-														X: &ast.Ident{
-															Name: "Globals",
-														},
-														Sel: &ast.Ident{
-															Name: "RequiredFieldMissingError",
-														},
-													},
-												},
-											},
-										},
-									},
-								},
-								&ast.IfStmt{
-									Cond: &ast.CallExpr{
-										Fun: &ast.SelectorExpr{
-											X: &ast.Ident{
-												Name: "errors",
-											},
-											Sel: &ast.Ident{
-												Name: "As",
-											},
-										},
-										Args: []ast.Expr{
-											&ast.Ident{
-												Name: "err",
-											},
-											&ast.UnaryExpr{
-												Op: token.AND,
-												X: &ast.Ident{
-													Name: "additionalElementsError",
-												},
-											},
-										},
-									},
-									Body: &ast.BlockStmt{
-										List: []ast.Stmt{
-											&ast.AssignStmt{
-												Lhs: []ast.Expr{
-													&ast.Ident{
-														Name: "joinedErrors",
-													},
-												},
-												Tok: token.ASSIGN,
-												Rhs: []ast.Expr{
-													&ast.CallExpr{
-														Fun: &ast.SelectorExpr{
-															X: &ast.Ident{
-																Name: "errors",
-															},
-															Sel: &ast.Ident{
-																Name: "Join",
-															},
-														},
-														Args: []ast.Expr{
-															&ast.Ident{
-																Name: "additionalElementsError",
-															},
-														},
-													},
-												},
-											},
-										},
-									},
-									Else: &ast.IfStmt{
-										Cond: &ast.CallExpr{
-											Fun: &ast.SelectorExpr{
-												X: &ast.Ident{
-													Name: "errors",
-												},
-												Sel: &ast.Ident{
-													Name: "As",
-												},
-											},
-											Args: []ast.Expr{
-												&ast.Ident{
-													Name: "err",
-												},
-												&ast.UnaryExpr{
-													Op: token.AND,
-													X: &ast.Ident{
-														Name: "requiredFieldMissingError",
-													},
-												},
-											},
-										},
-										Body: &ast.BlockStmt{
-											List: []ast.Stmt{
-												&ast.AssignStmt{
-													Lhs: []ast.Expr{
-														&ast.Ident{
-															Name: "joinedErrors",
-														},
-													},
-													Tok: token.ASSIGN,
-													Rhs: []ast.Expr{
-														&ast.CallExpr{
-															Fun: &ast.SelectorExpr{
-																X: &ast.Ident{
-																	Name: "errors",
-																},
-																Sel: &ast.Ident{
-																	Name: "Join",
-																},
-															},
-															Args: []ast.Expr{
-																&ast.Ident{
-																	Name: "requiredFieldMissingError",
-																},
-															},
-														},
-													},
-												},
-											},
-										},
-										Else: &ast.BlockStmt{
-											List: []ast.Stmt{
-												&ast.ReturnStmt{
-													Results: []ast.Expr{
-														&ast.Ident{
-															Name: "err",
-														},
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	},
 }

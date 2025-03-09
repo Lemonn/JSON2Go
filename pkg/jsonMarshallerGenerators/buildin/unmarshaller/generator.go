@@ -1,3 +1,6 @@
+//go:build test
+// +build test
+
 package unmarshaller
 
 import (
@@ -44,6 +47,7 @@ func (g *Generator) Generate(path string) ([]ast.Decl, []string, error) {
 	var imports []string
 	var stmts []ast.Stmt
 
+	//TODO g.fileData[path].ActiveType != nil should this not be forced type?
 	if g.codeGenerator.IsStruct(path) && g.fileData[path].TypeAdjusterData != nil && g.fileData[path].ActiveType != nil {
 		//TODO struct that is replaces as a whole. This case is not yet implemented
 	} else if g.codeGenerator.IsStruct(path) {
