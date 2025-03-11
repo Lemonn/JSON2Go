@@ -10,7 +10,7 @@ type CodeGenerator interface {
 	GetName() string
 	GetVersion() string
 	SetActiveTypeFile(fileData fieldData.FileData)
-	Generate() (map[fieldData.Path][]*fieldData.File, []*fieldData.File, error)
+	Generate() (map[fieldData.Path][]*fieldData.File, error)
 	GenerateGoMod(name string) (*modfile.File, error)
 	//StoreState() (uuid.UUID, error)
 	//ResetState(stateID uuid.UUID) error
@@ -18,9 +18,9 @@ type CodeGenerator interface {
 	//GetRegisteredTypeCheckers() typeAdjustment.TypeDeterminationFunctions
 
 	//Clone could replace StoreState and ResetState by simply cloning the CodeGenerator
-	Clone() CodeGenerator
+	Clone(fileData fieldData.FileData) CodeGenerator
 
-	GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.Expr)
+	GetOriginalFieldType(path fieldData.Path) (expr ast.Expr, imports fieldData.Imports, err error)
 	IsStruct(path fieldData.Path) bool
 	IsPointer(path fieldData.Path) bool
 	GetType(path fieldData.Path) fieldData.Type

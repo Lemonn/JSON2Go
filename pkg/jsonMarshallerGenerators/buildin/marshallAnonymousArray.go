@@ -10,7 +10,10 @@ import (
 func (g *Generator) marshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, fieldData.Imports, error) {
 	var stmts []ast.Stmt
 	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
-
+	originalExpr, imports, err := g.codeGenerator.GetOriginalFieldType(path)
+	if err != nil {
+		return nil, nil, err
+	}
 	stmts = append(stmts, &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
@@ -38,13 +41,17 @@ func (g *Generator) marshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, fie
 							Name: "lt",
 						},
 					},
-					Type: utils.GeneratedNestedArray(levelOfArrays, g.codeGenerator.GetFieldType(path, false)),
+					Type: utils.GeneratedNestedArray(levelOfArrays, originalExpr),
 				},
 			},
 		},
 	})
 	//TODO replace whit own function
-	g.marshallHandleArrayField(&stmts, path)
+	fieldStmts, err := g.marshallHandleArrayField(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	stmts = append(stmts, fieldStmts...)
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.CallExpr{
@@ -65,5 +72,5 @@ func (g *Generator) marshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, fie
 		},
 	})
 
-	return stmts, nil, nil
+	return stmts, imports, nil
 }

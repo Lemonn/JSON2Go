@@ -25,26 +25,29 @@ type Generator struct {
 	typeAdjuster      *typeAdjustment.TypeAdjuster
 	globalFiles       []*fieldData.File
 	*codeGenerators.Common
-	startTime         time.Time
-	version           string
-	name              string
-	marshallGenerator jsonMarshallerGenerators.Generator
-	completed         bool
-	goVersion         string
+	startTime                  time.Time
+	version                    string
+	name                       string
+	marshallGenerator          jsonMarshallerGenerators.Generator
+	completed                  bool
+	goVersion                  string
+	typeDeterminationFunctions typeAdjustment.TypeDeterminationFunctions
 }
 
 func NewGenerator(fileData fieldData.FileData, adjuster typeAdjustment.TypeDeterminationFunctions) (*Generator, error) {
 	s := &Generator{
-		fileData:          fileData,
-		files:             make(map[fieldData.Path][]*fieldData.File),
-		stackedMarshaller: make(map[fieldData.Path][]*fieldData.File),
-		Common:            codeGenerators.NewCommon(fileData),
-		startTime:         time.Now(),
-		version:           "v0.0.1",
-		name:              "Test",
+		fileData:                   fileData,
+		files:                      make(map[fieldData.Path][]*fieldData.File),
+		stackedMarshaller:          make(map[fieldData.Path][]*fieldData.File),
+		Common:                     codeGenerators.NewCommon(fileData),
+		startTime:                  time.Now(),
+		version:                    "v0.0.1",
+		name:                       "Test",
+		typeDeterminationFunctions: adjuster,
 	}
 
 	//TODO We should probably get rid of the only dependency that needs the generator (isStruct) and replace it whit a global function
+	// There are much more dependencies on the code generator
 	s.marshallGenerator = jsonMarshallGen.NewGenerator(fileData, s)
 
 	s.typeAdjuster = typeAdjustment.NewTypeAdjuster(fileData, s, adjuster, s.startTime)
@@ -59,24 +62,39 @@ func (g *Generator) GetVersion() string {
 	return g.version
 }
 
-func (g *Generator) Clone() codeGenerators.CodeGenerator {
-	return &Generator{
-		fileData:          make(fieldData.FileData),
+func (g *Generator) SetActiveTypeFile(fileData fieldData.FileData) {
+	g.fileData = fileData
+	g.Common.SetActiveTypeFile(fileData)
+}
+
+func (g *Generator) Clone(fileData fieldData.FileData) codeGenerators.CodeGenerator {
+	cg := &Generator{
+		fileData:          fileData,
 		files:             make(map[fieldData.Path][]*fieldData.File),
 		stackedMarshaller: make(map[fieldData.Path][]*fieldData.File),
-		typeAdjuster:      g.typeAdjuster,
+		typeAdjuster:      nil,
 		globalFiles:       []*fieldData.File{},
-		Common:            g.Common,
+		Common:            codeGenerators.NewCommon(make(fieldData.FileData)),
 		startTime:         g.startTime,
 		version:           g.version,
-		name:              g.name,
-		marshallGenerator: g.marshallGenerator,
+		name:              "sfasfdagdgafdsgasdgsadgasdg",
+		marshallGenerator: nil,
 		completed:         false,
 		goVersion:         g.goVersion,
 	}
+	cg.marshallGenerator = jsonMarshallGen.NewGenerator(fileData, cg)
+	var t typeAdjustment.TypeDeterminationFunctions
+	for _, function := range g.typeDeterminationFunctions {
+		t = append(t, function.Clone())
+	}
+	cg.typeAdjuster = typeAdjustment.NewTypeAdjuster(fileData, cg, t, cg.startTime)
+	return cg
 }
 
 func (g *Generator) appendFileAtPath(path fieldData.Path, file *fieldData.File) {
+	if file.NoPath {
+		path = ""
+	}
 	if _, ok := g.files[path]; ok {
 		g.files[path] = append(g.files[path], file)
 	} else {
@@ -86,6 +104,7 @@ func (g *Generator) appendFileAtPath(path fieldData.Path, file *fieldData.File) 
 
 func (g *Generator) appendFilesAtPath(path fieldData.Path, files []*fieldData.File) {
 	for _, file := range files {
+		file.SetPackage(path.GetFieldName())
 		g.appendFileAtPath(path, file)
 	}
 }
@@ -100,10 +119,10 @@ func (g *Generator) createFileAtPath(path fieldData.Path) *fieldData.File {
 	return file
 }
 
-func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldData.File, error) {
+func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, error) {
 	startPath, err := g.getStartPath()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	pathsToProcess := []fieldData.Path{startPath}
 	for {
@@ -125,14 +144,17 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 			for fieldPath, _ := range g.fileData[path].Types["field"][levelOfArrays] {
 				fp, err := fieldData.NewPath(fieldPath)
 				if err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 				//Adjust Types
 				subFiles, replacementType, replacementImport, err := g.typeAdjuster.AdjustType(fp)
 				if err != nil {
-					return nil, nil, err
+					return nil, err
 				}
-				g.stackedMarshaller[path] = g.files[path]
+				if !g.fileData[path].DirectToForceSourceType {
+					g.stackedMarshaller[path] = g.files[path]
+				}
+
 				//TODO we need a function, which adjusts not only the path, but all contained imports in one go
 				for subPath, f := range subFiles {
 					g.appendFilesAtPath(fp.GetParentPath().Append(subPath), f)
@@ -142,7 +164,12 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 				if replacementType != nil {
 					expr = replacementType
 				} else {
-					expr = g.GetFieldType(fp, false)
+
+					expr, _, err = g.GetOriginalFieldType(fp)
+					expr = utils.GeneratedNestedArray(g.GetLevelOfArrays(fp), expr)
+					if err != nil {
+						return nil, err
+					}
 				}
 
 				//If it's a struct and has not been replaced by a custom type, we need to import the type.
@@ -154,7 +181,7 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 						NeedsAdjustment: true,
 					})
 				} else if replacementType != nil {
-					structFile.Imports = append(structFile.Imports, replacementImport)
+					structFile.Imports = append(structFile.Imports, replacementImport...)
 				}
 
 				g.fileData[fp].Active = true
@@ -201,9 +228,9 @@ func (g *Generator) Generate() (map[fieldData.Path][]*fieldData.File, []*fieldDa
 
 	err = g.addJSONMarshaller()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return g.files, g.globalFiles, nil
+	return g.files, nil
 }
 
 func (g *Generator) addJSONMarshaller() error {
@@ -239,7 +266,10 @@ func (g *Generator) CheckType(path fieldData.Path) error {
 	if pathData.TypeAdjusterData != nil && pathData.TypeAdjusterData.NameOfActiveTypeAdjuster != nil {
 		return g.typeAdjuster.CheckActiveChecker(path, true)
 	} else if pathData.ActiveType != nil {
-		expr := g.GetFieldType(path, true)
+		expr, _, err := g.GetOriginalFieldType(path)
+		if err != nil {
+			return err
+		}
 		typeString, err := utils.ExprToString(expr)
 		if err != nil {
 			return err

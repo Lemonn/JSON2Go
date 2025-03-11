@@ -1,6 +1,7 @@
 package codeGenerators
 
 import (
+	"errors"
 	"fmt"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
@@ -122,7 +123,52 @@ func (b *Common) EmptySubtype(path fieldData.Path) bool {
 	return EmptySubtype
 }
 
-func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.Expr) {
+func (b *Common) GetOriginalFieldType(path fieldData.Path) (expr ast.Expr, imports fieldData.Imports, err error) {
+	var pathData *fieldData.PathData
+	var ok bool
+	if pathData, ok = b.fileData[path]; !ok {
+		return nil, nil, errors.New(fmt.Sprintf("given path: %s was not found", path.String()))
+	}
+
+	if pathData.ForceSourceType != nil && pathData.DirectToForceSourceType {
+		parseExpr, err := parser.ParseExpr(*pathData.ForceSourceType)
+		if err != nil {
+			return nil, nil, err
+		}
+		return parseExpr, nil, nil
+	}
+
+	if len(pathData.Types) == 1 || b.EmptySubtype(path) || b.IsPointer(path) {
+		Type := b.GetType(path)
+		if len(pathData.Types[Type]) == 1 {
+			if Type == fieldData.Field {
+				imports = append(imports, &fieldData.Import{
+					Path:            path,
+					NeedsAdjustment: true,
+				})
+				expr = &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: path.GetFieldName()}, Sel: &ast.Ident{Name: path.GetFieldName()}}}
+			} else if Type == fieldData.EmptyArray {
+				expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			} else if Type == fieldData.EmptyStruct {
+				expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			} else if Type == fieldData.Null {
+				expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+			} else {
+				expr = &ast.Ident{Name: string(Type)}
+				if b.IsPointer(path) {
+					expr = &ast.StarExpr{X: expr}
+				}
+			}
+		} else {
+			expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+		}
+	} else {
+		expr = &ast.InterfaceType{Methods: &ast.FieldList{}}
+	}
+	return expr, imports, nil
+}
+
+func (b *Common) GetFieldTypeOld(path fieldData.Path, withoutArray bool) (expr ast.Expr, imports fieldData.Imports) {
 	pathData := b.fileData[path]
 	levelOfArrays := math.MaxInt32
 	if withoutArray {
@@ -132,9 +178,9 @@ func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.
 	if pathData.ForceSourceType != nil {
 		parseExpr, err := parser.ParseExpr(*pathData.ForceSourceType)
 		if err != nil {
-			return nil
+			return nil, nil
 		}
-		return parseExpr
+		return parseExpr, nil
 	}
 
 	if len(pathData.Types) == 1 || b.EmptySubtype(path) || b.IsPointer(path) {
@@ -147,6 +193,10 @@ func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.
 			}
 
 			if Type == fieldData.Field {
+				imports = append(imports, &fieldData.Import{
+					Path:            path,
+					NeedsAdjustment: true,
+				})
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.StarExpr{X: &ast.SelectorExpr{X: &ast.Ident{Name: path.GetFieldName()}, Sel: &ast.Ident{Name: path.GetFieldName()}}})
 			} else if Type == fieldData.EmptyArray {
 				expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
@@ -183,7 +233,7 @@ func (b *Common) GetFieldType(path fieldData.Path, withoutArray bool) (expr ast.
 		}
 		expr = utils.GeneratedNestedArray(levelOfArrays, &ast.InterfaceType{Methods: &ast.FieldList{}})
 	}
-	return expr
+	return expr, imports
 }
 
 /*
@@ -316,7 +366,6 @@ func (b *Common) IsBasicType(path fieldData.Path) bool {
 func (b *Common) IsBasicTypeWhitDetails(path fieldData.Path) (bool, int, fieldData.Type) {
 	var setType *fieldData.Type
 	var setLevel *int
-
 	if _, ok := b.fileData[path].Types[fieldData.EmptyStruct]; ok {
 		return false, 0, fieldData.Unsupported
 	} else if _, ok := b.fileData[path].Types[fieldData.Field]; ok {

@@ -12,6 +12,10 @@ import (
 func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, fieldData.Imports, error) {
 	var stmts []ast.Stmt
 	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
+	orignalExpr, imports, err := g.codeGenerator.GetOriginalFieldType(path)
+	if err != nil {
+		return nil, nil, err
+	}
 	//Content of the nested range statement
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
@@ -24,7 +28,7 @@ func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, f
 								Name: "result",
 							},
 						},
-						Type: g.codeGenerator.GetFieldType(path, true),
+						Type: orignalExpr,
 					},
 				},
 			},
@@ -88,7 +92,7 @@ func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, f
 						},
 					},
 					//TODO replace whit original type
-					Type: utils.GeneratedNestedArray(levelOfArrays, g.codeGenerator.GetFieldType(path, true)),
+					Type: utils.GeneratedNestedArray(levelOfArrays, orignalExpr),
 				},
 			},
 		},
@@ -163,7 +167,7 @@ func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, f
 			},
 		},
 	})
-	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: path.GetRune()}}, g.codeGenerator.GetFieldType(path, true)))
+	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.StarExpr{X: &ast.Ident{Name: path.GetRune()}}, orignalExpr))
 	stmts = append(stmts, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.Ident{
@@ -171,11 +175,11 @@ func (g *Generator) unmarshallArrayGenerator(path fieldData.Path) ([]ast.Stmt, f
 			},
 		},
 	})
-
-	return stmts, fieldData.Imports{&fieldData.Import{
+	imports = append(imports, &fieldData.Import{
 		Path:            "encoding/json",
 		Alias:           nil,
 		NeedsAdjustment: false,
 		IsGlobal:        false,
-	}}, nil
+	})
+	return stmts, imports, nil
 }

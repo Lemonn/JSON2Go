@@ -138,8 +138,19 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 			return nil, nil, err
 		}
 		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fp)
+		originalExpr, _, err := g.codeGenerator.GetOriginalFieldType(fp)
 
 		if g.fileData[fp].TypeAdjusterData != nil && g.fileData[fp].ActiveType != nil {
+			var fieldHandlerStmts []ast.Stmt
+			if levelOfArrays == 0 {
+				fieldHandlerStmts = g.unmarshallHandleField(fp, originalExpr)
+			} else {
+				fieldHandlerStmts, err = g.unmarshallHandleArrayField(fp, originalExpr, levelOfArrays)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+
 			required = true
 			stmts = append(stmts, &ast.IfStmt{
 				Init: &ast.AssignStmt{
@@ -168,13 +179,7 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 					Name: "ok",
 				},
 				Body: &ast.BlockStmt{
-					List: func() []ast.Stmt {
-						if levelOfArrays == 0 {
-							return g.unmarshallHandleField(fp)
-						} else {
-							return g.unmarshallHandleArrayField(fp)
-						}
-					}(),
+					List: fieldHandlerStmts,
 				},
 			})
 		} else if !g.codeGenerator.IsStruct(fp) {
@@ -684,7 +689,7 @@ func (g *Generator) unmarshallStructGenerator(path fieldData.Path) ([]ast.Stmt, 
 }
 
 // TODO function to get struct and field name from path. Also respect the package in case one is given.
-func (g *Generator) unmarshallHandleField(path fieldData.Path) []ast.Stmt {
+func (g *Generator) unmarshallHandleField(path fieldData.Path, originalType ast.Expr) []ast.Stmt {
 	return []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -696,7 +701,7 @@ func (g *Generator) unmarshallHandleField(path fieldData.Path) []ast.Stmt {
 								Name: "unmarshalledValue",
 							},
 						},
-						Type: g.codeGenerator.GetFieldType(path, true),
+						Type: originalType,
 					},
 				},
 			},
@@ -838,8 +843,7 @@ func (g *Generator) unmarshallHandleField(path fieldData.Path) []ast.Stmt {
 	}
 }
 
-func (g *Generator) unmarshallHandleArrayField(path fieldData.Path) []ast.Stmt {
-	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
+func (g *Generator) unmarshallHandleArrayField(path fieldData.Path, originalType ast.Expr, levelOfArrays int) ([]ast.Stmt, error) {
 	innerStmts := []ast.Stmt{
 		&ast.DeclStmt{
 			Decl: &ast.GenDecl{
@@ -851,7 +855,7 @@ func (g *Generator) unmarshallHandleArrayField(path fieldData.Path) []ast.Stmt {
 								Name: "result",
 							},
 						},
-						Type: g.codeGenerator.GetFieldType(path, false),
+						Type: utils.GeneratedNestedArray(levelOfArrays, originalType),
 					},
 				},
 			},
@@ -930,7 +934,7 @@ func (g *Generator) unmarshallHandleArrayField(path fieldData.Path) []ast.Stmt {
 								Name: "lt",
 							},
 						},
-						Type: g.codeGenerator.GetFieldType(path, false),
+						Type: utils.GeneratedNestedArray(levelOfArrays, originalType),
 					},
 				},
 			},
@@ -988,6 +992,6 @@ func (g *Generator) unmarshallHandleArrayField(path fieldData.Path) []ast.Stmt {
 				},
 			},
 		},
-		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: path.GetParentRune()}, Sel: &ast.Ident{Name: path.GetFieldName()}}, g.codeGenerator.GetFieldType(path, true)),
-	}
+		utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, &ast.Ident{Name: "lt"}, &ast.SelectorExpr{X: &ast.Ident{Name: path.GetParentRune()}, Sel: &ast.Ident{Name: path.GetFieldName()}}, originalType),
+	}, nil
 }

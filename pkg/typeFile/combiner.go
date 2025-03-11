@@ -2,7 +2,6 @@ package typeFile
 
 import (
 	"errors"
-	"fmt"
 	timestampError "github.com/Lemonn/JSON2Go/internal/error"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
@@ -42,9 +41,10 @@ func (c *Combiner) InterfaceReplacement(p, p1 *fieldData.PathData) bool {
 }
 
 func (c *Combiner) processStackedTypeChecks(stackedTypeChecks map[fieldData.Path]struct{}, fileData fieldData.FileData) error {
-	c.codeGenerator.SetActiveTypeFile(fileData)
+	//c.codeGenerator.SetActiveTypeFile(fileData)
+	dfsfd := c.codeGenerator.Clone(fileData)
 	for path := range stackedTypeChecks {
-		err := c.codeGenerator.CheckType(path)
+		err := dfsfd.CheckType(path)
 		err = c.appendFileErrorsToTypeFile(err, fileData[path])
 		if err != nil {
 			return err
@@ -252,8 +252,8 @@ func (c *Combiner) combinePathData(p, p1 *fieldData.PathData, path fieldData.Pat
 		newP.SeenCounter = p1.SeenCounter
 	} else {
 		newP.IntroductionCount = p.IntroductionCount + p1.IntroductionCount
-		fmt.Println(p.IntroductionCount, p1.IntroductionCount)
-		fmt.Println(path)
+		//fmt.Println(p.IntroductionCount, p1.IntroductionCount)
+		//fmt.Println(path)
 		newP.SeenCounter = p.SeenCounter + p1.SeenCounter
 	}
 

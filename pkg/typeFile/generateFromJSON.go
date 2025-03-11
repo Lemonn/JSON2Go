@@ -16,7 +16,7 @@ type Parser struct {
 	eaa       bool
 }
 
-func GenerateTypeFile(jsonData []byte, structName fieldData.Path, externalizeAnonymousArray bool) (fieldData.FileData, error) {
+func GenerateTypeFile(jsonData []byte, structName string, externalizeAnonymousArray bool) (fieldData.FileData, error) {
 	p := Parser{
 		fileData:  make(fieldData.FileData),
 		startTime: time.Now(),
@@ -29,7 +29,8 @@ func GenerateTypeFile(jsonData []byte, structName fieldData.Path, externalizeAno
 	if err != nil {
 		return nil, err
 	}
-	err = p.codeGen(JsonData, structName, 0)
+	//TODO create proper path whit new
+	err = p.codeGen(JsonData, fieldData.Path(structName), 0)
 	if err != nil {
 		return nil, err
 	}

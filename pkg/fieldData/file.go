@@ -3,6 +3,7 @@ package fieldData
 import (
 	"errors"
 	"github.com/Lemonn/JSON2Go/internal/utils"
+	"github.com/google/uuid"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -28,6 +29,9 @@ func (p Path) Prepend(path Path) Path {
 }
 
 func (p Path) Append(path Path) Path {
+	if path == "" {
+		return p
+	}
 	return p + "." + path
 }
 
@@ -103,6 +107,11 @@ type File struct {
 	ModFileContent []*ModFileContent `json:"modFileContent,omitempty"`
 	Name           *string           `json:"name,omitempty"`
 	FileClass      FileClass         `json:"fileClass,omitempty"`
+	// GlobalID Used by generators of global files, to allow to detect duplicates even if sub-files are used.
+	GlobalID uuid.UUID
+	// NoPath Set whenever the file is one that has no default path. Instead, the path is upon the function
+	// that writes the file
+	NoPath bool
 }
 
 func (f *File) WriteImportsToFile(globalPath Path, packageOffset string) error {
@@ -157,6 +166,7 @@ func (f *File) WriteImportsToFile(globalPath Path, packageOffset string) error {
 		},
 		}, f.File.Decls...)
 	}
+	ast.SortImports(f.FSet, f.File)
 	return nil
 }
 

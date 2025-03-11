@@ -9,7 +9,8 @@ import (
 	"unicode"
 )
 
-func (g *Generator) generateShadowStruct(path fieldData.Path) (*ast.DeclStmt, error) {
+func (g *Generator) generateShadowStruct(path fieldData.Path) (*ast.DeclStmt, fieldData.Imports, error) {
+	var imports fieldData.Imports
 	var localFields []*ast.Field
 	var Level int
 	for Level, _ = range g.fileData[path].Types[fieldData.Field] {
@@ -18,11 +19,19 @@ func (g *Generator) generateShadowStruct(path fieldData.Path) (*ast.DeclStmt, er
 	for fieldPath, _ := range g.fileData[path].Types[fieldData.Field][Level] {
 		fp, err := fieldData.NewPath(fieldPath)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		expr, i, err := g.codeGenerator.GetOriginalFieldType(fp)
+		if err != nil {
+			return nil, nil, err
+		}
+		if i != nil && len(i) > 0 {
+			imports = append(imports, i...)
+		}
+		levelOfArrays := g.codeGenerator.GetLevelOfArrays(fp)
 		localFields = append(localFields, &ast.Field{
 			Names: []*ast.Ident{{Name: fp.GetFieldName()}},
-			Type:  g.codeGenerator.GetFieldType(fp, false),
+			Type:  utils.GeneratedNestedArray(levelOfArrays, expr),
 			Tag:   &ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("`json:\"%s,omitempty\"`", g.fileData[fp].JsonFieldName)},
 		})
 	}
@@ -43,14 +52,14 @@ func (g *Generator) generateShadowStruct(path fieldData.Path) (*ast.DeclStmt, er
 				},
 			},
 		},
-	}, nil
+	}, imports, nil
 }
 
 func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fieldData.Imports, error) {
 	var stmts []ast.Stmt
 	required := false
 
-	localStruct, err := g.generateShadowStruct(path)
+	localStruct, imports, err := g.generateShadowStruct(path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -88,9 +97,14 @@ func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fi
 		if g.fileData[fp].TypeAdjusterData != nil && g.fileData[fp].ActiveType != nil && !g.codeGenerator.IsStruct(fp) {
 			required = true
 			if levelOfArrays > 0 {
-				g.marshallHandleArrayField(&stmts, fp)
+				arrayFieldStmts, err := g.marshallHandleArrayField(fp)
+				if err != nil {
+					return nil, nil, err
+				}
+				stmts = append(stmts, arrayFieldStmts...)
 			} else {
-				g.marshallHandleField(&stmts, fp)
+				fieldStmts := g.marshallHandleField(fp)
+				stmts = append(stmts, fieldStmts...)
 			}
 		} else {
 			stmts = append(stmts, &ast.AssignStmt{
@@ -143,16 +157,16 @@ func (g *Generator) marshallStructGenerator(path fieldData.Path) ([]ast.Stmt, fi
 			},
 		},
 	})
-	return stmts, fieldData.Imports{&fieldData.Import{
-		Path:            "encoding/json",
-		Alias:           nil,
-		NeedsAdjustment: false,
-		IsGlobal:        false,
-	}}, nil
+
+	imports = append(imports, &fieldData.Import{
+		Path: "encoding/json",
+	})
+	return stmts, imports, nil
 }
 
-func (g *Generator) marshallHandleField(stmts *[]ast.Stmt, path fieldData.Path) {
-	*stmts = append(*stmts, &ast.AssignStmt{
+func (g *Generator) marshallHandleField(path fieldData.Path) []ast.Stmt {
+	var stmts []ast.Stmt
+	stmts = append(stmts, &ast.AssignStmt{
 		Lhs: []ast.Expr{
 			&ast.SelectorExpr{
 				X: &ast.Ident{
@@ -185,7 +199,7 @@ func (g *Generator) marshallHandleField(stmts *[]ast.Stmt, path fieldData.Path) 
 			},
 		},
 	})
-	*stmts = append(*stmts, &ast.IfStmt{
+	stmts = append(stmts, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.Ident{
 				Name: "err",
@@ -210,13 +224,18 @@ func (g *Generator) marshallHandleField(stmts *[]ast.Stmt, path fieldData.Path) 
 			},
 		},
 	})
+	return stmts
 }
 
-func (g *Generator) marshallHandleArrayField(stmts *[]ast.Stmt, path fieldData.Path) {
+func (g *Generator) marshallHandleArrayField(path fieldData.Path) ([]ast.Stmt, error) {
+	var stmts []ast.Stmt
 	var fieldNameExpr ast.Expr
 	var structFieldNameIndexExpr ast.Expr
 	levelOfArrays := g.codeGenerator.GetLevelOfArrays(path)
-
+	expr, _, err := g.codeGenerator.GetOriginalFieldType(path)
+	if err != nil {
+		return nil, err
+	}
 	fieldNameExpr = &ast.SelectorExpr{X: &ast.Ident{Name: "lt"}, Sel: &ast.Ident{Name: path.GetFieldName()}}
 	structFieldNameIndexExpr = &ast.SelectorExpr{X: &ast.Ident{Name: string(unicode.ToLower([]rune(path.GetParentFieldName())[0]))}, Sel: &ast.Ident{Name: path.GetFieldName()}}
 
@@ -231,7 +250,7 @@ func (g *Generator) marshallHandleArrayField(stmts *[]ast.Stmt, path fieldData.P
 								Name: "result",
 							},
 						},
-						Type: g.codeGenerator.GetFieldType(path, false),
+						Type: utils.GeneratedNestedArray(levelOfArrays, expr),
 					},
 				},
 			},
@@ -286,6 +305,6 @@ func (g *Generator) marshallHandleArrayField(stmts *[]ast.Stmt, path fieldData.P
 		},
 		utils.GenerateAppendStatement(levelOfArrays-1, 0, fieldNameExpr, &ast.Ident{Name: "result"}, "index"),
 	}
-	*stmts = append(*stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, g.codeGenerator.GetFieldType(path, false)))
-	return
+	stmts = append(stmts, utils.GenerateNestedRangeStmt(levelOfArrays, innerStmts, structFieldNameIndexExpr, fieldNameExpr, utils.GeneratedNestedArray(levelOfArrays, expr)))
+	return stmts, nil
 }

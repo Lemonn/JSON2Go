@@ -11,19 +11,20 @@ import (
 
 type TypeDeterminationFunction interface {
 	CouldTypeBeApplied() (State, error)
-	GetType() (ast.Expr, *fieldData.Import)
+	GetType() (ast.Expr, fieldData.Imports)
 	GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error)
 	GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error)
-	GetName() string
 	SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error
 	GetState() (json.RawMessage, error)
+	GetName() string
 
-	GetSubFiles() (map[string]*fieldData.File, error)
+	GetSubFiles() (map[fieldData.Path][]*fieldData.File, error)
 	NeedsMarshaller() bool
 
 	TypeExpansion() bool
-	ForceSourceType() *string
 	GetVersion() *string
+
+	Clone() TypeDeterminationFunction
 }
 
 type State int

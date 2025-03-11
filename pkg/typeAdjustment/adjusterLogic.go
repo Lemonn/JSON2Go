@@ -41,7 +41,7 @@ func (ta *TypeAdjuster) SetActiveTypeFile(fileData fieldData.FileData) {
 	ta.fileData = fileData
 }
 
-func (ta *TypeAdjuster) getUnmarshallScaffold(path fieldData.Path, replacementExpr ast.Expr) *ast.FuncDecl {
+func (ta *TypeAdjuster) getUnmarshallScaffold(path fieldData.Path, expr, replacementExpr ast.Expr) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
 			Name: "UnMarshall" + path.GetFieldName(),
@@ -55,7 +55,7 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path fieldData.Path, replacementEx
 								Name: "baseValue",
 							},
 						},
-						Type: ta.codeGenerator.GetFieldType(path, true),
+						Type: expr,
 					},
 				},
 			},
@@ -78,7 +78,7 @@ func (ta *TypeAdjuster) getUnmarshallScaffold(path fieldData.Path, replacementEx
 	}
 }
 
-func (ta *TypeAdjuster) getMarshallScaffold(path fieldData.Path, replacementExpr ast.Expr) *ast.FuncDecl {
+func (ta *TypeAdjuster) getMarshallScaffold(path fieldData.Path, expr, replacementExpr ast.Expr) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Name: &ast.Ident{
 			Name: "Marshall" + path.GetFieldName(),
@@ -99,7 +99,7 @@ func (ta *TypeAdjuster) getMarshallScaffold(path fieldData.Path, replacementExpr
 			Results: &ast.FieldList{
 				List: []*ast.Field{
 					{
-						Type: ta.codeGenerator.GetFieldType(path, true),
+						Type: expr,
 					},
 					{
 						Type: &ast.Ident{
@@ -185,9 +185,9 @@ func (ta *TypeAdjuster) startTimestampPointer() *int64 {
 	return &i
 }
 
-func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*fieldData.File, ast.Expr, *fieldData.Import, error) {
+func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*fieldData.File, ast.Expr, fieldData.Imports, error) {
 	files := make(map[fieldData.Path][]*fieldData.File)
-	var typeImport *fieldData.Import
+	var replacementImports fieldData.Imports
 	var replacementExpr ast.Expr
 
 	var runCheckersOnly bool
@@ -218,7 +218,7 @@ func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*f
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			replacementExpr, typeImport = checker.GetType()
+			replacementExpr, replacementImports = checker.GetType()
 
 			activeTypeString, err := utils.ExprToString(replacementExpr)
 			if err != nil {
@@ -232,22 +232,43 @@ func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*f
 			typeAdjusterData.LastCheckedTimestamp = ta.startTimestampPointer()
 			typeAdjusterData.CheckerVersion = checker.GetVersion()
 
-			if checker.NeedsMarshaller() {
-				//TODO we need to get, and handle the mod file contents
-				marshall, i, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, replacementExpr))
-				if err != nil {
-					return nil, nil, nil, err
-				}
-				if _, ok := files[""]; !ok {
-					files[""] = []*fieldData.File{}
-				}
-				files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{marshall}, i, nil, fieldData.FileClassMarshallFunction))
+			if !checker.NeedsMarshaller() {
+				ta.fileData[path].DirectToForceSourceType = true
+				ta.fileData[path].ForceSourceType = &activeTypeString
+			}
 
-				unmarshall, i, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, replacementExpr))
+			if checker.NeedsMarshaller() {
+				expr, orignalTypeImports, err := ta.codeGenerator.GetOriginalFieldType(path)
+				/*
+					marshall, i, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, expr, replacementExpr))
+					if err != nil {
+						return nil, nil, nil, err
+					}
+					i = append(i, orignalTypeImports...)
+					if _, ok := files[""]; !ok {
+						files[""] = []*fieldData.File{}
+					}
+					files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{marshall}, i, nil, fieldData.FileClassMarshallFunction))
+
+
+				*/
+				unmarshall, i, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, expr, replacementExpr))
 				if err != nil {
 					return nil, nil, nil, err
 				}
+				i = append(i, orignalTypeImports...)
 				files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{unmarshall}, i, nil, fieldData.FileClassUnMarshallFunction))
+			}
+
+			subFiles, err := checker.GetSubFiles()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			for f, i := range subFiles {
+				if _, ok := files[f]; !ok {
+					files[f] = []*fieldData.File{}
+				}
+				files[f] = append(files[f], i...)
 			}
 		} else if state == StateFailed {
 			if ta.fileData[path].TypeAdjusterData == nil {
@@ -266,7 +287,7 @@ func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*f
 			runCheckersOnly = true
 		}
 	}
-	return files, replacementExpr, typeImport, nil
+	return files, replacementExpr, replacementImports, nil
 }
 
 func (ta *TypeAdjuster) checkerExcluded(path fieldData.Path, checker TypeDeterminationFunction) bool {
