@@ -317,39 +317,32 @@ func JsonNameToGoName(str string) string {
 	} else if len(str) == 1 && unicode.IsLower(rune(str[0])) {
 		return strcase.ToCamel(str) + "_"
 	} else {
-		c := strcase.ToCamel(str)
+		str = strcase.ToCamel(str)
 		if unicode.IsNumber(rune(str[0])) {
-			return "_" + c
-			/*
-				switch rune(str[0]) {
-				case '0':
-					str = "zero_" + str
-				case '1':
-					str = "one_" + str
-				case '2':
-					str = "two_" + str
-				case '3':
-					str = "three_" + str
-				case '4':
-					str = "four_" + str
-				case '5':
-					str = "five_" + str
-				case '6':
-					str = "six_" + str
-				case '7':
-					str = "seven_" + str
-				case '8':
-					str = "eight_" + str
-				case '9':
-					str = "nine_" + str
-				default:
-					return str
-				}
-
-			*/
-		} else {
-			return c
+			switch rune(str[0]) {
+			case '0':
+				str = "Zero" + str[1:]
+			case '1':
+				str = "One" + str[1:]
+			case '2':
+				str = "Two" + str[1:]
+			case '3':
+				str = "Three" + str[1:]
+			case '4':
+				str = "Four" + str[1:]
+			case '5':
+				str = "Five" + str[1:]
+			case '6':
+				str = "Six" + str[1:]
+			case '7':
+				str = "Seven" + str[1:]
+			case '8':
+				str = "Eight" + str[1:]
+			case '9':
+				str = "Nine" + str[1:]
+			}
 		}
+		return str
 	}
 }
 
@@ -443,11 +436,4 @@ func ExprToString(expr ast.Expr) (string, error) {
 		return "", err
 	}
 	return out.String(), nil
-}
-
-func IsRootPath(path string) bool {
-	if len(strings.Split(path, ".")) == 1 {
-		return true
-	}
-	return false
 }

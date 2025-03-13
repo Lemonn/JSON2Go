@@ -91,6 +91,10 @@ func (g *Generator) Clone(fileData fieldData.FileData) codeGenerators.CodeGenera
 	return cg
 }
 
+func (g *Generator) GetStartTime() time.Time {
+	return g.startTime
+}
+
 func (g *Generator) appendFileAtPath(path fieldData.Path, file *fieldData.File) {
 	if file.NoPath {
 		path = ""

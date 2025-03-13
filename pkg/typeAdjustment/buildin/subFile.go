@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	error2 "github.com/Lemonn/JSON2Go/internal/error"
 	"github.com/Lemonn/JSON2Go/internal/utils"
 	"github.com/Lemonn/JSON2Go/pkg/codeGenerators"
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
@@ -16,23 +17,21 @@ import (
 )
 
 type SubFile struct {
-	generator     func(input string) (interface{}, error)
-	codeGenerator codeGenerators.CodeGenerator
-	activePath    fieldData.Path
-	fileData      fieldData.FileData
-	state         *KvState
-	files         map[fieldData.Path][]*fieldData.File
-	generatorCode *ast.FuncLit
+	generator                          func(input string, inputSettings interface{}) (output interface{}, OutputSettings interface{}, err error)
+	codeGenerator                      codeGenerators.CodeGenerator
+	marshalGenerator                   func(settings interface{}, functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
+	activePath                         fieldData.Path
+	fileData                           fieldData.FileData
+	state                              *KvState
+	files                              map[fieldData.Path][]*fieldData.File
+	generatorCode                      *ast.FuncLit
+	se                                 interface{}
+	marshallImports, unmarshallImports []string
 }
 
 type KvState struct {
-	fileData          fieldData.FileData
-	creationTimestamp int64
-}
-
-type SubFileSettings struct {
-	Generator     func(input string) (interface{}, error)
-	GeneratorCode string
+	FileData          fieldData.FileData `json:"fileData"`
+	CreationTimestamp int64              `json:"creationTimestamp"`
 }
 
 func (s *SubFile) ValidateFunction(generatorCode string) (*ast.FuncLit, error) {
@@ -75,12 +74,22 @@ func (s *SubFile) ValidateFunction(generatorCode string) (*ast.FuncLit, error) {
 
 }
 
-func NewSubFile(generator func(input string) (interface{}, error), generatorCode string) (*SubFile, error) {
+type SubFileSettings struct {
+	Generator                          func(input string, inputSettings interface{}) (output interface{}, outputSettings interface{}, err error)
+	MarshalGenerator                   func(settings interface{}, functionScaffold *ast.FuncDecl) (*ast.FuncDecl, error)
+	GeneratorCode                      string
+	MarshallImports, UnmarshallImports []string
+}
+
+func NewSubFile(sfs *SubFileSettings) (*SubFile, error) {
 	s := &SubFile{
-		generator: generator,
+		generator:         sfs.Generator,
+		marshalGenerator:  sfs.MarshalGenerator,
+		marshallImports:   sfs.MarshallImports,
+		unmarshallImports: sfs.UnmarshallImports,
 	}
 
-	gc, err := s.ValidateFunction(generatorCode)
+	gc, err := s.ValidateFunction(sfs.GeneratorCode)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +113,11 @@ func (s *SubFile) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	if !isBasicType {
 		return typeAdjustment.StateFailed, nil
 	}
+
+	var err error
+	var sf interface{}
 	for value, _ := range s.fileData[s.activePath].Types[fieldData.String][levelOfArrays] {
-		sf, err := s.generator(value)
+		sf, s.se, err = s.generator(value, s.se)
 		if err != nil {
 			return typeAdjustment.StateFailed, nil
 		} else {
@@ -117,12 +129,12 @@ func (s *SubFile) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	//Add state file
 	if s.state != nil {
 		files = append(files, &typeFile.FileDetail{
-			FileData:     s.state.fileData,
-			CreationDate: time.Unix(s.state.creationTimestamp, 0),
+			FileData:     s.state.FileData,
+			CreationDate: time.Unix(s.state.CreationTimestamp, 0),
 		})
 	}
 
-	for _, sf := range rawSubFiles {
+	for _, sf = range rawSubFiles {
 		marshal, err := json.Marshal(sf)
 		if err != nil {
 			return typeAdjustment.StateFailed, err
@@ -139,28 +151,31 @@ func (s *SubFile) CouldTypeBeApplied() (typeAdjustment.State, error) {
 
 	c := typeFile.NewCombiner(s.codeGenerator, time.Now())
 	combined, err := c.CombineFileDetails(files)
-	if err != nil {
-		return typeAdjustment.StateFailed, err
+
+	//Check for hard errors, meaning all errors which are not of type file error. If such an error is found, return.
+	errorArray := utils.GetAllWrappedErrors(err)
+	softErrors := err
+	for _, err := range errorArray {
+		if _, ok := err.(error2.FileError); !ok {
+			return typeAdjustment.StateFailed, err
+		}
 	}
 
-	//TODO analyze the generated file for file errors if some are found, return them
-
 	subCodeGen := s.codeGenerator.Clone(combined)
-	subCodeGen.SetActiveTypeFile(combined)
 	subFiles, err := subCodeGen.Generate()
 	if err != nil {
 		return typeAdjustment.StateFailed, err
 	}
-	s.state.fileData = combined
-	//TODO replace whit start timestamp
-	s.state.creationTimestamp = time.Now().Unix()
+
+	s.state.FileData = combined
+	s.state.CreationTimestamp = subCodeGen.GetStartTime().Unix()
 	s.files = subFiles
 
-	return typeAdjustment.StateApplicable, nil
+	return typeAdjustment.StateApplicable, softErrors
 }
 
 func (s *SubFile) GetType() (ast.Expr, fieldData.Imports) {
-	return &ast.SelectorExpr{X: ast.NewIdent(s.activePath.GetFieldName()), Sel: ast.NewIdent(s.activePath.GetFieldName())},
+	return &ast.StarExpr{X: &ast.SelectorExpr{X: ast.NewIdent(s.activePath.GetFieldName()), Sel: ast.NewIdent(s.activePath.GetFieldName())}},
 		fieldData.Imports{
 			&fieldData.Import{
 				Path:            s.activePath,
@@ -169,7 +184,24 @@ func (s *SubFile) GetType() (ast.Expr, fieldData.Imports) {
 }
 
 func (s *SubFile) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
-	return nil, nil, nil
+	generator, err := s.marshalGenerator(s.se, functionScaffold)
+	if err != nil {
+		return nil, nil, err
+	}
+	imports := fieldData.Imports{
+		&fieldData.Import{
+			Path:            s.activePath,
+			NeedsAdjustment: true,
+		},
+	}
+	if s.marshallImports != nil {
+		for _, marshallImport := range s.marshallImports {
+			imports = append(imports, &fieldData.Import{
+				Path: fieldData.Path(marshallImport),
+			})
+		}
+	}
+	return generator, imports, nil
 }
 
 func (s *SubFile) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
@@ -365,24 +397,18 @@ func (s *SubFile) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncD
 			},
 		},
 	}
-	//TODO set imports
 	imports := fieldData.Imports{
-		&fieldData.Import{
-			Path: "encoding/json",
-		},
-		&fieldData.Import{
-			Path: "errors",
-		},
-		&fieldData.Import{
-			Path: "fmt",
-		},
-		&fieldData.Import{
-			Path: "strings",
-		},
 		&fieldData.Import{
 			Path:            s.activePath,
 			NeedsAdjustment: true,
 		},
+	}
+	if s.unmarshallImports != nil {
+		for _, unmarshallImport := range s.unmarshallImports {
+			imports = append(imports, &fieldData.Import{
+				Path: fieldData.Path(unmarshallImport),
+			})
+		}
 	}
 	return functionScaffold, imports, nil
 }

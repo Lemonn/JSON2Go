@@ -15,7 +15,7 @@ import (
 )
 
 type IntTypeChecker struct {
-	currentPath string
+	currentPath fieldData.Path
 	fileData    fieldData.FileData
 	fieldType   intTypeCheckerFieldType
 }
@@ -87,7 +87,7 @@ func (i *IntTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	return typeAdjustment.StateApplicable, nil
 }
 
-func (i *IntTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (i *IntTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	if i.fieldType == intTypeCheckerFieldTypeFloat64 {
 		functionScaffold.Body.List = []ast.Stmt{
 			&ast.ReturnStmt{
@@ -108,7 +108,7 @@ func (i *IntTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.
 				},
 			},
 		}
-		return functionScaffold, []string{}, nil
+		return functionScaffold, nil, nil
 	} else if i.fieldType == intTypeCheckerFieldTypeString {
 		functionScaffold.Body.List = []ast.Stmt{
 			&ast.ReturnStmt{
@@ -134,7 +134,7 @@ func (i *IntTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.
 				},
 			},
 		}
-		return functionScaffold, []string{"strconv"}, nil
+		return functionScaffold, fieldData.Imports{&fieldData.Import{Path: fieldData.Path("strconv")}}, nil
 	} else {
 		//TODO right now this prefers float64 whit mixed types, make this a setting
 		functionScaffold.Body.List = []ast.Stmt{
@@ -156,7 +156,7 @@ func (i *IntTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.
 				},
 			},
 		}
-		return functionScaffold, []string{}, nil
+		return functionScaffold, nil, nil
 	}
 }
 
@@ -191,7 +191,7 @@ func test(baseValue interface{}) (int, error) {
 	}
 }
 
-func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	if i.fieldType == intTypeCheckerFieldTypeFloat64 {
 		functionScaffold.Body.List = []ast.Stmt{
 			&ast.IfStmt{
@@ -401,7 +401,14 @@ func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*as
 				},
 			},
 		}
-		return functionScaffold, []string{"fmt", "math"}, nil
+		return functionScaffold, fieldData.Imports{
+			&fieldData.Import{
+				Path: "fmt",
+			},
+			&fieldData.Import{
+				Path: "math",
+			},
+		}, nil
 	} else if i.fieldType == intTypeCheckerFieldTypeString {
 		functionScaffold.Body.List = []ast.Stmt{
 			&ast.AssignStmt{
@@ -669,7 +676,11 @@ func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*as
 				},
 			},
 		}
-		return functionScaffold, []string{"fmt", "math", "strconv"}, nil
+		return functionScaffold, fieldData.Imports{
+			{Path: "fmt"},
+			{Path: "math"},
+			{Path: "strconv"},
+		}, nil
 	} else {
 		functionScaffold.Body.List = []ast.Stmt{
 			&ast.CaseClause{
@@ -1204,11 +1215,15 @@ func (i *IntTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*as
 				},
 			},
 		}
-		return functionScaffold, []string{"fmt", "math", "strconv"}, nil
+		return functionScaffold, fieldData.Imports{
+			{Path: "fmt"},
+			{Path: "math"},
+			{Path: "strconv"},
+		}, nil
 	}
 }
 
-func (i *IntTypeChecker) SetState(_ []json.RawMessage, currentPath string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, _ codeGenerators.CodeGenerator) error {
+func (i *IntTypeChecker) SetState(_ []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, _ codeGenerators.CodeGenerator) error {
 	i.currentPath = currentPath
 	i.fileData = fileData
 	return nil
@@ -1239,10 +1254,22 @@ func (i *IntTypeChecker) GetVersion() *string {
 	return utils.StringToPointer("v0.0.1")
 }
 
-func (i *IntTypeChecker) GetType() ast.Expr {
-	return &ast.Ident{Name: "int"}
+func (i *IntTypeChecker) GetType() (ast.Expr, fieldData.Imports) {
+	return &ast.Ident{Name: "int"}, nil
 }
 
 func (i *IntTypeChecker) GetName() string {
 	return "json2go.IntTypeChecker"
+}
+
+func (i *IntTypeChecker) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
+	return nil, nil
+}
+
+func (i *IntTypeChecker) NeedsMarshaller() bool {
+	return true
+}
+
+func (i *IntTypeChecker) Clone() typeAdjustment.TypeDeterminationFunction {
+	return &IntTypeChecker{}
 }

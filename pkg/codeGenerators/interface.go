@@ -4,6 +4,7 @@ import (
 	"github.com/Lemonn/JSON2Go/pkg/fieldData"
 	"go/ast"
 	"golang.org/x/mod/modfile"
+	"time"
 )
 
 type CodeGenerator interface {
@@ -16,6 +17,7 @@ type CodeGenerator interface {
 	//ResetState(stateID uuid.UUID) error
 	//DeleteState(stateID uuid.UUID) error
 	//GetRegisteredTypeCheckers() typeAdjustment.TypeDeterminationFunctions
+	GetStartTime() time.Time
 
 	//Clone could replace StoreState and ResetState by simply cloning the CodeGenerator
 	Clone(fileData fieldData.FileData) CodeGenerator
