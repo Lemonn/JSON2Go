@@ -15,6 +15,7 @@ type Boolean struct {
 	state         *BooleanState
 	fieldData     fieldData.FileData
 	codeGenerator codeGenerators.CodeGenerator
+	currentPath   fieldData.Path
 }
 
 type BooleanState struct {
@@ -37,12 +38,12 @@ func NewBoolean(trueStrings map[string]struct{}, falseStrings map[string]struct{
 	}
 }
 
-func (b *Boolean) CouldTypeBeApplied(path string) (typeAdjustment.State, error) {
-	basicType, Level, Type := b.codeGenerator.IsBasicTypeWhitDetails(path)
+func (b *Boolean) CouldTypeBeApplied() (typeAdjustment.State, error) {
+	basicType, Level, Type := b.codeGenerator.IsBasicTypeWhitDetails(b.currentPath)
 	if !basicType {
 		return typeAdjustment.StateFailed, nil
 	}
-	for s, _ := range b.fieldData[path].Types[Type][Level] {
+	for s, _ := range b.fieldData[b.currentPath].Types[Type][Level] {
 		if _, ok := b.state.TrueStrings[s]; ok {
 			return typeAdjustment.StateApplicable, nil
 		} else if _, ok := b.state.FalseStrings[s]; ok {
@@ -52,7 +53,7 @@ func (b *Boolean) CouldTypeBeApplied(path string) (typeAdjustment.State, error) 
 	return typeAdjustment.StateFailed, nil
 }
 
-func (b *Boolean) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (b *Boolean) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	if len(b.state.TrueStrings) > 1 || len(b.state.FalseStrings) > 1 {
 		var trueMapTypesExpr []ast.Expr
 		for v, _ := range b.state.TrueStrings {
@@ -230,10 +231,10 @@ func (b *Boolean) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDec
 			},
 		})
 	}
-	return functionScaffold, []string{}, nil
+	return functionScaffold, nil, nil
 }
 
-func (b *Boolean) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (b *Boolean) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.BinaryExpr{
@@ -332,10 +333,10 @@ func (b *Boolean) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncD
 			},
 		},
 	})
-	return functionScaffold, []string{"errors"}, nil
+	return functionScaffold, fieldData.Imports{{Path: "errors"}}, nil
 }
 
-func (b *Boolean) SetState(states []json.RawMessage, _ string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+func (b *Boolean) SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error {
 	if b.state == nil {
 		b.state = &BooleanState{
 			TrueStrings:  make(map[string]struct{}),
@@ -353,6 +354,7 @@ func (b *Boolean) SetState(states []json.RawMessage, _ string, fileData fieldDat
 	}
 	b.fieldData = fileData
 	b.codeGenerator = codeGenerator
+	b.currentPath = currentPath
 	return nil
 }
 
@@ -380,10 +382,10 @@ func (b *Boolean) GetVersion() *string {
 	return utils.StringToPointer("v0.0.1")
 }
 
-func (b *Boolean) GetType() ast.Expr {
+func (b *Boolean) GetType() (ast.Expr, fieldData.Imports) {
 	var expr ast.Expr
 	expr = &ast.Ident{Name: "bool"}
-	//TODO should we generate the pointer type here, or should we make each type to an pointer type, if the field is
+	//TODO should we generate the pointer type here, or should we make each type to a pointer type, if the field is
 	// of pointer type?
 	/*
 		if b.codeGenerator.IsPointer(b.activePath) {
@@ -391,9 +393,26 @@ func (b *Boolean) GetType() ast.Expr {
 		}
 
 	*/
-	return expr
+	return expr, nil
 }
 
 func (b *Boolean) GetName() string {
 	return "json2Go.Boolean"
+}
+
+func (b *Boolean) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
+	return nil, nil
+}
+
+func (b *Boolean) NeedsMarshaller() bool {
+	return true
+}
+
+func (b *Boolean) Clone() typeAdjustment.TypeDeterminationFunction {
+	trueStrings := make(map[string]struct{})
+	falseStrings := make(map[string]struct{})
+
+	maps.Copy(trueStrings, b.state.TrueStrings)
+	maps.Copy(falseStrings, b.state.FalseStrings)
+	return NewBoolean(trueStrings, falseStrings)
 }

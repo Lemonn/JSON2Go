@@ -439,7 +439,6 @@ func (s *SubFile) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
 }
 
 func (s *SubFile) TypeExpansion() bool {
-	//TODO implement me
 	return false
 }
 

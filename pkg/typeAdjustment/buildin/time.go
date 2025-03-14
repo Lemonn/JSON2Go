@@ -144,7 +144,7 @@ func (t *TimeTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 	}}, nil
 }
 
-func (t *TimeTypeChecker) GetSubFiles() (map[string]*fieldData.File, error) {
+func (t *TimeTypeChecker) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
 	return nil, nil
 }
 
@@ -215,7 +215,7 @@ func (t *TimeTypeChecker) GetState() (json.RawMessage, error) {
 	return b, nil
 }
 
-func (t *TimeTypeChecker) GetType() (ast.Expr, *fieldData.Import) {
+func (t *TimeTypeChecker) GetType() (ast.Expr, fieldData.Imports) {
 	return &ast.SelectorExpr{
 		X: &ast.Ident{
 			Name: "time",
@@ -223,9 +223,13 @@ func (t *TimeTypeChecker) GetType() (ast.Expr, *fieldData.Import) {
 		Sel: &ast.Ident{
 			Name: "Time",
 		},
-	}, nil
+	}, fieldData.Imports{{Path: "time"}}
 }
 
 func (t *TimeTypeChecker) GetName() string {
 	return "json2go.TimeTypeChecker"
+}
+
+func (t *TimeTypeChecker) Clone() typeAdjustment.TypeDeterminationFunction {
+	return nil
 }

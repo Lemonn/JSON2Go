@@ -16,7 +16,7 @@ import (
 
 type EnumTypeChecker struct {
 	seenValues    []string
-	currentPath   string
+	currentPath   fieldData.Path
 	state         *EnumTypeCheckerState
 	settings      *EnumTypeCheckerSettings
 	fileData      fieldData.FileData
@@ -71,10 +71,10 @@ func NewEnumTypeChecker(settings *EnumTypeCheckerSettings) *EnumTypeChecker {
 }
 
 func (e *EnumTypeChecker) getEnumName() string {
-	return utils.GetFieldName(e.currentPath) + "Enum"
+	return e.currentPath.GetFieldName() + "Enum"
 }
 
-func (e *EnumTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (e *EnumTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X: &ast.Ident{
@@ -151,10 +151,10 @@ func (e *EnumTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 		},
 	})
 	//TODO add imports
-	return functionScaffold, []string{"fmt"}, nil
+	return functionScaffold, fieldData.Imports{{Path: "fmt"}}, nil
 }
 
-func (e *EnumTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (e *EnumTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body.List = append(functionScaffold.Body.List, &ast.ReturnStmt{
 		Results: []ast.Expr{
 			&ast.CallExpr{
@@ -173,7 +173,7 @@ func (e *EnumTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 	return functionScaffold, nil, nil
 }
 
-func (e *EnumTypeChecker) SetState(states []json.RawMessage, currentPath string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+func (e *EnumTypeChecker) SetState(states []json.RawMessage, currentPath fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error {
 	e.currentPath = currentPath
 	e.fileData = fileData
 	e.codeGenerator = codeGenerator
@@ -521,10 +521,27 @@ func (e *EnumTypeChecker) GetVersion() *string {
 	return utils.StringToPointer("v0.0.1")
 }
 
-func (e *EnumTypeChecker) GetType() ast.Expr {
-	return &ast.Ident{Name: e.getEnumName()}
+func (e *EnumTypeChecker) GetType() (ast.Expr, fieldData.Imports) {
+	return &ast.Ident{Name: e.getEnumName()}, nil
 }
 
 func (e *EnumTypeChecker) GetName() string {
 	return "json2go.EnumTypeChecker"
+}
+
+func (e *EnumTypeChecker) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
+	return nil, nil
+}
+
+func (e *EnumTypeChecker) NeedsMarshaller() bool {
+	return true
+}
+
+func (e *EnumTypeChecker) Clone() typeAdjustment.TypeDeterminationFunction {
+	return NewEnumTypeChecker(&EnumTypeCheckerSettings{
+		MinFieldCount:   e.settings.MinFieldCount,
+		MaxFieldCount:   e.settings.MaxFieldCount,
+		MinTimesSeen:    e.settings.MinTimesSeen,
+		SeenValuesRatio: e.settings.SeenValuesRatio,
+	})
 }

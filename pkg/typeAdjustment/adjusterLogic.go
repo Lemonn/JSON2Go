@@ -145,7 +145,7 @@ func (ta *TypeAdjuster) CheckActiveChecker(path fieldData.Path, checkOnly bool) 
 			return nil
 		}
 		if checker.TypeExpansion() {
-			//TODO implement whit the new generation method
+			//TODO implement with the new generation method
 			/*
 				err := ta.setFunctions(path, checker)
 				if err != nil {
@@ -239,19 +239,18 @@ func (ta *TypeAdjuster) AdjustType(path fieldData.Path) (map[fieldData.Path][]*f
 
 			if checker.NeedsMarshaller() {
 				expr, orignalTypeImports, err := ta.codeGenerator.GetOriginalFieldType(path)
-				/*
-					marshall, i, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, expr, replacementExpr))
-					if err != nil {
-						return nil, nil, nil, err
-					}
-					i = append(i, orignalTypeImports...)
-					if _, ok := files[""]; !ok {
-						files[""] = []*fieldData.File{}
-					}
-					files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{marshall}, i, nil, fieldData.FileClassMarshallFunction))
 
+				//TODO check if correct
+				marshall, i, err := checker.GenerateMarshall(ta.getMarshallScaffold(path, expr, replacementExpr))
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				i = append(i, orignalTypeImports...)
+				if _, ok := files[""]; !ok {
+					files[""] = []*fieldData.File{}
+				}
+				files[""] = append(files[""], fieldData.GetGoFile([]ast.Decl{marshall}, i, nil, fieldData.FileClassMarshallFunction))
 
-				*/
 				unmarshall, i, err := checker.GenerateUnmarshall(ta.getUnmarshallScaffold(path, expr, replacementExpr))
 				if err != nil {
 					return nil, nil, nil, err

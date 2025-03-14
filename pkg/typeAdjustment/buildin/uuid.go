@@ -13,7 +13,7 @@ type UUIDTypeChecker struct {
 	fileData      fieldData.FileData
 	codeGenerator codeGenerators.CodeGenerator
 	version       string
-	path          string
+	currentPath   fieldData.Path
 }
 
 func (u *UUIDTypeChecker) GetModFileContents() []*fieldData.ModFileContent {
@@ -28,7 +28,7 @@ func (u *UUIDTypeChecker) ForceSourceType() *string {
 	return nil
 }
 
-func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -50,10 +50,10 @@ func (u *UUIDTypeChecker) GenerateMarshall(functionScaffold *ast.FuncDecl) (*ast
 			},
 		},
 	}
-	return functionScaffold, []string{"github.com/google/uuid"}, nil
+	return functionScaffold, fieldData.Imports{{Path: "github.com/google/uuid"}}, nil
 }
 
-func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, []string, error) {
+func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*ast.FuncDecl, fieldData.Imports, error) {
 	functionScaffold.Body = &ast.BlockStmt{
 		List: []ast.Stmt{
 			&ast.ReturnStmt{
@@ -77,7 +77,7 @@ func (u *UUIDTypeChecker) GenerateUnmarshall(functionScaffold *ast.FuncDecl) (*a
 			},
 		},
 	}
-	return functionScaffold, []string{"github.com/google/uuid"}, nil
+	return functionScaffold, fieldData.Imports{{Path: "github.com/google/uuid"}}, nil
 }
 
 func (u *UUIDTypeChecker) TypeExpansion() bool {
@@ -88,12 +88,12 @@ func (u *UUIDTypeChecker) TypeExpansion() bool {
 func (u *UUIDTypeChecker) CouldTypeBeApplied() (typeAdjustment.State, error) {
 	var Level int
 	var err error
-	pathData := u.fileData[u.path]
+	pathData := u.fileData[u.currentPath]
 	//TODO check if its struct type and ignore
 	if len(pathData.Types) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
-	Type := u.codeGenerator.GetType(u.path)
+	Type := u.codeGenerator.GetType(u.currentPath)
 	if len(pathData.Types[Type]) > 1 {
 		return typeAdjustment.StateFailed, nil
 	}
@@ -114,10 +114,10 @@ func (u *UUIDTypeChecker) GetExtraCode() ([]ast.Decl, []string, error) {
 	return nil, nil, nil
 }
 
-func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, path string, fileData fieldData.FileData, _ typeAdjustment.TypeDeterminationFunctions, codeGenerator codeGenerators.CodeGenerator) error {
+func (u *UUIDTypeChecker) SetState(_ []json.RawMessage, path fieldData.Path, fileData fieldData.FileData, codeGenerator codeGenerators.CodeGenerator) error {
 	u.fileData = fileData
 	u.codeGenerator = codeGenerator
-	u.path = path
+	u.currentPath = path
 	return nil
 }
 
@@ -125,7 +125,7 @@ func (u *UUIDTypeChecker) GetState() (json.RawMessage, error) {
 	return nil, nil
 }
 
-func (u *UUIDTypeChecker) GetType() ast.Expr {
+func (u *UUIDTypeChecker) GetType() (ast.Expr, fieldData.Imports) {
 	return &ast.SelectorExpr{
 		X: &ast.Ident{
 			Name: "uuid",
@@ -133,9 +133,21 @@ func (u *UUIDTypeChecker) GetType() ast.Expr {
 		Sel: &ast.Ident{
 			Name: "UUID",
 		},
-	}
+	}, fieldData.Imports{{Path: "github.com/google/uuid"}}
 }
 
 func (u *UUIDTypeChecker) GetName() string {
 	return "json2go.UUIDTypeChecker"
+}
+
+func (u *UUIDTypeChecker) GetSubFiles() (map[fieldData.Path][]*fieldData.File, error) {
+	return nil, nil
+}
+
+func (u *UUIDTypeChecker) NeedsMarshaller() bool {
+	return true
+}
+
+func (u *UUIDTypeChecker) Clone() typeAdjustment.TypeDeterminationFunction {
+	return &UUIDTypeChecker{}
 }
